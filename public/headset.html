@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AR Tetris - Headset</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 14px;
+      z-index: 1000;
+    }
+    #start-ar {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 20px 40px;
+      font-size: 24px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      z-index: 1000;
+    }
+    #start-ar:hover {
+      background: #45a049;
+    }
+    #game-over {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      padding: 40px;
+      border-radius: 10px;
+      text-align: center;
+      display: none;
+      z-index: 1000;
+    }
+    #game-over h2 {
+      margin: 0 0 20px 0;
+      font-size: 48px;
+    }
+    #game-over p {
+      font-size: 24px;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <button id="start-ar">Start AR Tetris</button>
+  <div id="info">
+    <div>Status: <span id="status">Initializing...</span></div>
+    <div>Controller: <span id="controller-status">Not connected</span></div>
+    <div>Score: <span id="score">0</span></div>
+    <div>Level: <span id="level">1</span></div>
+  </div>
+  <div id="game-over">
+    <h2>Game Over!</h2>
+    <p>Final Score: <span id="final-score">0</span></p>
+    <p>Use controller to start new game</p>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+    // WebSocket connection
+    let ws;
+    let wsConnected = false;
+
+    // Three.js setup
+    let scene, camera, renderer, xrSession;
+    let gameBoard, currentPiece, nextPiece;
+    let gameActive = false;
+    let score = 0;
+    let level = 1;
+    let linesCleared = 0;
+    let dropInterval = 1000;
+    let lastDropTime = 0;
+
+    // Game constants
+    const BOARD_WIDTH = 10;
+    const BOARD_HEIGHT = 20;
+    const BLOCK_SIZE = 0.05;
+    const BOARD_OFFSET = new THREE.Vector3(0, 0, -1);
+
+    // Tetris pieces definitions
+    const PIECES = {
+      I: { shape: [[1,1,1,1]], color: 0x00ffff },
+      O: { shape: [[1,1],[1,1]], color: 0xffff00 },
+      T: { shape: [[0,1,0],[1,1,1]], color: 0x800080 },
+      S: { shape: [[0,1,1],[1,1,0]], color: 0x00ff00 },
+      Z: { shape: [[1,1,0],[0,1,1]], color: 0xff0000 },
+      J: { shape: [[1,0,0],[1,1,1]], color: 0x0000ff },
+      L: { shape: [[0,0,1],[1,1,1]], color: 0xffa500 }
+    };
+
+    const PIECE_TYPES = Object.keys(PIECES);
+
+    // Game board state
+    let board = Array(BOARD_HEIGHT).fill().map(() => Array(BOARD_WIDTH).fill(0));
+    let boardMeshes = [];
+
+    // Initialize WebSocket
+    function initWebSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        wsConnected = true;
+        ws.send(JSON.stringify({ type: 'register', role: 'headset' }));
+        updateStatus('Connected to server');
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleMessage(data);
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        updateStatus('Connection error');
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        wsConnected = false;
+        updateStatus('Disconnected');
+        document.getElementById('controller-status').textContent = 'Not connected';
+        setTimeout(initWebSocket, 3000);
+      };
+    }
+
+    function handleMessage(data) {
+      if (data.type === 'registered') {
+        console.log('Registered as headset');
+      } else if (data.type === 'controller_connected') {
+        document.getElementById('controller-status').textContent = 'Connected';
+      } else if (data.type === 'controller_disconnected') {
+        document.getElementById('controller-status').textContent = 'Not connected';
+      } else if (data.type === 'control') {
+        handleControl(data.action);
+      }
+    }
+
+    function handleControl(action) {
+      if (!gameActive && action !== 'new_game') return;
+
+      switch(action) {
+        case 'new_game':
+          startNewGame();
+          break;
+        case 'left':
+          movePiece(-1, 0);
+          break;
+        case 'right':
+          movePiece(1, 0);
+          break;
+        case 'down':
+          movePiece(0, 1);
+          break;
+        case 'rotate':
+          rotatePiece();
+          break;
+        case 'drop':
+          hardDrop();
+          break;
+      }
+    }
+
+    function updateStatus(status) {
+      document.getElementById('status').textContent = status;
+    }
+
+    function updateScore(points) {
+      score += points;
+      document.getElementById('score').textContent = score;
+      sendGameState();
+    }
+
+    function sendGameState() {
+      if (wsConnected && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'game_state',
+          score: score,
+          level: level,
+          linesCleared: linesCleared,
+          gameActive: gameActive
+        }));
+      }
+    }
+
+    // Initialize Three.js scene
+    function initScene() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      // Lighting
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(1, 2, 1);
+      scene.add(directionalLight);
+
+      // Create game board frame
+      createBoardFrame();
+
+      updateStatus('Scene initialized');
+    }
+
+    function createBoardFrame() {
+      const frameGeometry = new THREE.BoxGeometry(
+        BOARD_WIDTH * BLOCK_SIZE + 0.01,
+        BOARD_HEIGHT * BLOCK_SIZE + 0.01,
+        0.01
+      );
+      const frameMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        transparent: true,
+        opacity: 0.3
+      });
+      const frame = new THREE.Mesh(frameGeometry, frameMaterial);
+      frame.position.copy(BOARD_OFFSET);
+      frame.position.x += (BOARD_WIDTH * BLOCK_SIZE) / 2 - BLOCK_SIZE / 2;
+      frame.position.y += (BOARD_HEIGHT * BLOCK_SIZE) / 2 - BLOCK_SIZE / 2;
+      scene.add(frame);
+
+      // Grid lines
+      const gridMaterial = new THREE.LineBasicMaterial({ color: 0x666666 });
+      const gridGroup = new THREE.Group();
+
+      for (let x = 0; x <= BOARD_WIDTH; x++) {
+        const points = [];
+        points.push(new THREE.Vector3(x * BLOCK_SIZE, 0, 0.01));
+        points.push(new THREE.Vector3(x * BLOCK_SIZE, BOARD_HEIGHT * BLOCK_SIZE, 0.01));
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const line = new THREE.Line(geometry, gridMaterial);
+        gridGroup.add(line);
+      }
+
+      for (let y = 0; y <= BOARD_HEIGHT; y++) {
+        const points = [];
+        points.push(new THREE.Vector3(0, y * BLOCK_SIZE, 0.01));
+        points.push(new THREE.Vector3(BOARD_WIDTH * BLOCK_SIZE, y * BLOCK_SIZE, 0.01));
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const line = new THREE.Line(geometry, gridMaterial);
+        gridGroup.add(line);
+      }
+
+      gridGroup.position.copy(BOARD_OFFSET);
+      scene.add(gridGroup);
+    }
+
+    function createBlock(x, y, color, parent = scene) {
+      const geometry = new THREE.BoxGeometry(BLOCK_SIZE * 0.95, BLOCK_SIZE * 0.95, BLOCK_SIZE * 0.5);
+      const material = new THREE.MeshStandardMaterial({ color: color });
+      const block = new THREE.Mesh(geometry, material);
+
+      block.position.x = BOARD_OFFSET.x + x * BLOCK_SIZE;
+      block.position.y = BOARD_OFFSET.y + (BOARD_HEIGHT - 1 - y) * BLOCK_SIZE;
+      block.position.z = BOARD_OFFSET.z;
+
+      parent.add(block);
+      return block;
+    }
+
+    function createPiece(type) {
+      const pieceData = PIECES[type];
+      const group = new THREE.Group();
+      const blocks = [];
+
+      pieceData.shape.forEach((row, y) => {
+        row.forEach((cell, x) => {
+          if (cell) {
+            const block = createBlock(0, 0, pieceData.color, group);
+            block.userData = { x, y };
+            blocks.push(block);
+          }
+        });
+      });
+
+      return {
+        group: group,
+        blocks: blocks,
+        type: type,
+        shape: pieceData.shape,
+        color: pieceData.color,
+        x: Math.floor(BOARD_WIDTH / 2) - Math.floor(pieceData.shape[0].length / 2),
+        y: 0,
+        rotation: 0
+      };
+    }
+
+    function updatePiecePosition(piece) {
+      piece.blocks.forEach(block => {
+        const localX = block.userData.x;
+        const localY = block.userData.y;
+        const worldX = piece.x + localX;
+        const worldY = piece.y + localY;
+
+        block.position.x = BOARD_OFFSET.x + worldX * BLOCK_SIZE;
+        block.position.y = BOARD_OFFSET.y + (BOARD_HEIGHT - 1 - worldY) * BLOCK_SIZE;
+      });
+    }
+
+    function movePiece(dx, dy) {
+      if (!currentPiece) return;
+
+      const newX = currentPiece.x + dx;
+      const newY = currentPiece.y + dy;
+
+      if (canPlacePiece(currentPiece, newX, newY)) {
+        currentPiece.x = newX;
+        currentPiece.y = newY;
+        updatePiecePosition(currentPiece);
+        return true;
+      } else if (dy > 0) {
+        lockPiece();
+        return false;
+      }
+      return false;
+    }
+
+    function rotatePiece() {
+      if (!currentPiece) return;
+
+      const rotated = rotateShape(currentPiece.shape);
+      const oldShape = currentPiece.shape;
+
+      currentPiece.shape = rotated;
+      updatePieceShape(currentPiece);
+
+      if (!canPlacePiece(currentPiece, currentPiece.x, currentPiece.y)) {
+        currentPiece.shape = oldShape;
+        updatePieceShape(currentPiece);
+      } else {
+        updatePiecePosition(currentPiece);
+      }
+    }
+
+    function rotateShape(shape) {
+      const rows = shape.length;
+      const cols = shape[0].length;
+      const rotated = Array(cols).fill().map(() => Array(rows).fill(0));
+
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          rotated[x][rows - 1 - y] = shape[y][x];
+        }
+      }
+
+      return rotated;
+    }
+
+    function updatePieceShape(piece) {
+      piece.blocks.forEach(block => piece.group.remove(block));
+      piece.blocks = [];
+
+      piece.shape.forEach((row, y) => {
+        row.forEach((cell, x) => {
+          if (cell) {
+            const block = createBlock(0, 0, piece.color, piece.group);
+            block.userData = { x, y };
+            piece.blocks.push(block);
+          }
+        });
+      });
+    }
+
+    function hardDrop() {
+      if (!currentPiece) return;
+
+      while (movePiece(0, 1)) {
+        updateScore(2);
+      }
+    }
+
+    function canPlacePiece(piece, x, y) {
+      for (let block of piece.blocks) {
+        const worldX = x + block.userData.x;
+        const worldY = y + block.userData.y;
+
+        if (worldX < 0 || worldX >= BOARD_WIDTH || worldY >= BOARD_HEIGHT) {
+          return false;
+        }
+
+        if (worldY >= 0 && board[worldY][worldX] !== 0) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function lockPiece() {
+      if (!currentPiece) return;
+
+      currentPiece.blocks.forEach(block => {
+        const worldX = currentPiece.x + block.userData.x;
+        const worldY = currentPiece.y + block.userData.y;
+
+        if (worldY >= 0 && worldY < BOARD_HEIGHT && worldX >= 0 && worldX < BOARD_WIDTH) {
+          board[worldY][worldX] = currentPiece.color;
+          const lockedBlock = createBlock(worldX, worldY, currentPiece.color);
+          boardMeshes.push(lockedBlock);
+        }
+      });
+
+      scene.remove(currentPiece.group);
+      currentPiece = null;
+
+      const lines = clearLines();
+      if (lines > 0) {
+        linesCleared += lines;
+        updateScore(lines * 100 * level);
+        level = Math.floor(linesCleared / 10) + 1;
+        dropInterval = Math.max(100, 1000 - (level - 1) * 100);
+        document.getElementById('level').textContent = level;
+      }
+
+      spawnPiece();
+    }
+
+    function clearLines() {
+      let linesCleared = 0;
+
+      for (let y = BOARD_HEIGHT - 1; y >= 0; y--) {
+        if (board[y].every(cell => cell !== 0)) {
+          board.splice(y, 1);
+          board.unshift(Array(BOARD_WIDTH).fill(0));
+          linesCleared++;
+          y++;
+
+          boardMeshes = boardMeshes.filter(mesh => {
+            const meshY = BOARD_HEIGHT - 1 - Math.round((mesh.position.y - BOARD_OFFSET.y) / BLOCK_SIZE);
+            if (meshY === y) {
+              scene.remove(mesh);
+              return false;
+            }
+            return true;
+          });
+        }
+      }
+
+      if (linesCleared > 0) {
+        boardMeshes.forEach(mesh => {
+          const meshY = BOARD_HEIGHT - 1 - Math.round((mesh.position.y - BOARD_OFFSET.y) / BLOCK_SIZE);
+          const meshX = Math.round((mesh.position.x - BOARD_OFFSET.x) / BLOCK_SIZE);
+          mesh.position.y = BOARD_OFFSET.y + (BOARD_HEIGHT - 1 - meshY) * BLOCK_SIZE;
+        });
+      }
+
+      return linesCleared;
+    }
+
+    function spawnPiece() {
+      const pieceType = PIECE_TYPES[Math.floor(Math.random() * PIECE_TYPES.length)];
+      currentPiece = createPiece(pieceType);
+      scene.add(currentPiece.group);
+      updatePiecePosition(currentPiece);
+
+      if (!canPlacePiece(currentPiece, currentPiece.x, currentPiece.y)) {
+        gameOver();
+      }
+    }
+
+    function gameOver() {
+      gameActive = false;
+      document.getElementById('game-over').style.display = 'block';
+      document.getElementById('final-score').textContent = score;
+      sendGameState();
+    }
+
+    function startNewGame() {
+      board = Array(BOARD_HEIGHT).fill().map(() => Array(BOARD_WIDTH).fill(0));
+
+      boardMeshes.forEach(mesh => scene.remove(mesh));
+      boardMeshes = [];
+
+      if (currentPiece) {
+        scene.remove(currentPiece.group);
+        currentPiece = null;
+      }
+
+      score = 0;
+      level = 1;
+      linesCleared = 0;
+      dropInterval = 1000;
+      gameActive = true;
+
+      document.getElementById('score').textContent = '0';
+      document.getElementById('level').textContent = '1';
+      document.getElementById('game-over').style.display = 'none';
+
+      spawnPiece();
+      sendGameState();
+    }
+
+    function animate(time, frame) {
+      if (frame && gameActive) {
+        if (time - lastDropTime > dropInterval) {
+          movePiece(0, 1);
+          lastDropTime = time;
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    // Start AR button
+    document.getElementById('start-ar').addEventListener('click', async () => {
+      try {
+        if (!navigator.xr) {
+          alert('WebXR not supported in this browser');
+          return;
+        }
+
+        const supported = await navigator.xr.isSessionSupported('immersive-ar');
+        if (!supported) {
+          alert('AR not supported on this device');
+          return;
+        }
+
+        xrSession = await navigator.xr.requestSession('immersive-ar', {
+          requiredFeatures: ['local-floor'],
+          optionalFeatures: ['hand-tracking', 'hit-test']
+        });
+
+        await renderer.xr.setSession(xrSession);
+        document.getElementById('start-ar').style.display = 'none';
+        updateStatus('AR Active');
+
+        renderer.setAnimationLoop(animate);
+
+        xrSession.addEventListener('end', () => {
+          document.getElementById('start-ar').style.display = 'block';
+          updateStatus('AR Ended');
+          renderer.setAnimationLoop(null);
+        });
+
+      } catch (error) {
+        console.error('Error starting AR:', error);
+        alert('Error starting AR: ' + error.message);
+      }
+    });
+
+    // Initialize
+    initWebSocket();
+    initScene();
+  </script>
+</body>
+</html>

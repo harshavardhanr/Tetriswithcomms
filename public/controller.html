@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>AR Tetris - Controller</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Arial', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      touch-action: none;
+    }
+
+    #orientation-warning {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.95);
+      color: white;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 10000;
+      font-size: 24px;
+      text-align: center;
+      padding: 20px;
+    }
+
+    #orientation-warning svg {
+      width: 100px;
+      height: 100px;
+      margin-bottom: 20px;
+      animation: rotate 2s infinite;
+    }
+
+    @keyframes rotate {
+      0%, 100% { transform: rotate(0deg); }
+      50% { transform: rotate(90deg); }
+    }
+
+    @media (orientation: portrait) {
+      #orientation-warning {
+        display: flex !important;
+      }
+      #controller-container {
+        display: none !important;
+      }
+    }
+
+    #controller-container {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+      padding: 20px;
+      gap: 20px;
+    }
+
+    .section {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+
+    #status-section {
+      flex: 1;
+      justify-content: space-between;
+    }
+
+    #controls-section {
+      flex: 2;
+      justify-content: center;
+    }
+
+    .status-item {
+      background: rgba(255, 255, 255, 0.15);
+      padding: 15px;
+      border-radius: 15px;
+      margin-bottom: 15px;
+    }
+
+    .status-item h3 {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 14px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .status-item .value {
+      color: white;
+      font-size: 32px;
+      font-weight: bold;
+    }
+
+    .status-item.connection {
+      text-align: center;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.connected {
+      background: #4CAF50;
+    }
+
+    .status-dot.disconnected {
+      background: #f44336;
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    #controls-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 15px;
+      height: 100%;
+      max-height: 400px;
+      margin: auto;
+    }
+
+    .control-button {
+      background: rgba(255, 255, 255, 0.2);
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: 20px;
+      color: white;
+      font-size: 24px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 5px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .control-button:active {
+      background: rgba(255, 255, 255, 0.4);
+      transform: scale(0.95);
+    }
+
+    .control-button.disabled {
+      opacity: 0.3;
+      pointer-events: none;
+    }
+
+    .control-button svg {
+      width: 40px;
+      height: 40px;
+      fill: white;
+    }
+
+    .control-button .label {
+      font-size: 14px;
+      opacity: 0.8;
+    }
+
+    #btn-new-game {
+      background: linear-gradient(135deg, #4CAF50, #45a049);
+      grid-column: 2;
+      grid-row: 1;
+      font-size: 20px;
+    }
+
+    #btn-rotate {
+      grid-column: 2;
+      grid-row: 2;
+      background: linear-gradient(135deg, #2196F3, #1976D2);
+    }
+
+    #btn-left {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    #btn-right {
+      grid-column: 3;
+      grid-row: 2;
+    }
+
+    #btn-down {
+      grid-column: 2;
+      grid-row: 3;
+    }
+
+    #btn-drop {
+      grid-column: 1 / 4;
+      grid-row: 4;
+      background: linear-gradient(135deg, #FF9800, #F57C00);
+      height: 80px;
+    }
+
+    .touch-feedback {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+
+    .control-button:active .touch-feedback {
+      opacity: 1;
+    }
+
+    #game-status {
+      text-align: center;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 15px;
+      margin-bottom: 15px;
+    }
+
+    #game-status h2 {
+      color: white;
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+
+    #game-status-text {
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 18px;
+    }
+  </style>
+</head>
+<body>
+  <div id="orientation-warning">
+    <svg viewBox="0 0 24 24" fill="white">
+      <path d="M16.48 2.52c3.27 1.55 5.61 4.72 5.97 8.48h1.5C23.44 4.84 18.29 0 12 0l-.66.03 3.81 3.81 1.33-1.32zm-6.25-.77c-.59-.59-1.54-.59-2.12 0L1.75 8.11c-.59.59-.59 1.54 0 2.12l12.02 12.02c.59.59 1.54.59 2.12 0l6.36-6.36c.59-.59.59-1.54 0-2.12L10.23 1.75zm4.6 19.44L2.81 9.17l6.36-6.36 12.02 12.02-6.36 6.36zm-7.31.29C4.25 19.94 1.91 16.76 1.55 13H.05C.56 19.16 5.71 24 12 24l.66-.03-3.81-3.81-1.33 1.32z"/>
+    </svg>
+    <p>Please rotate your device to landscape mode</p>
+  </div>
+
+  <div id="controller-container">
+    <div id="status-section" class="section">
+      <div class="status-item connection">
+        <h3>Connection</h3>
+        <div>
+          <span class="status-dot disconnected" id="status-dot"></span>
+          <span class="value" style="font-size: 18px;" id="connection-status">Connecting...</span>
+        </div>
+      </div>
+
+      <div id="game-status">
+        <h2>AR Tetris</h2>
+        <p id="game-status-text">Waiting for game...</p>
+      </div>
+
+      <div class="status-item">
+        <h3>Score</h3>
+        <div class="value" id="score">0</div>
+      </div>
+
+      <div class="status-item">
+        <h3>Level</h3>
+        <div class="value" id="level">1</div>
+      </div>
+
+      <div class="status-item">
+        <h3>Lines</h3>
+        <div class="value" id="lines">0</div>
+      </div>
+    </div>
+
+    <div id="controls-section" class="section">
+      <div id="controls-grid">
+        <button class="control-button" id="btn-new-game">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+          </svg>
+          <span class="label">NEW GAME</span>
+          <div class="touch-feedback"></div>
+        </button>
+
+        <button class="control-button disabled" id="btn-left">
+          <svg viewBox="0 0 24 24">
+            <path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/>
+          </svg>
+          <span class="label">LEFT</span>
+          <div class="touch-feedback"></div>
+        </button>
+
+        <button class="control-button disabled" id="btn-rotate">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8c-.45-.83-.7-1.79-.7-2.8 0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.79.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z"/>
+          </svg>
+          <span class="label">ROTATE</span>
+          <div class="touch-feedback"></div>
+        </button>
+
+        <button class="control-button disabled" id="btn-right">
+          <svg viewBox="0 0 24 24">
+            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+          </svg>
+          <span class="label">RIGHT</span>
+          <div class="touch-feedback"></div>
+        </button>
+
+        <button class="control-button disabled" id="btn-down">
+          <svg viewBox="0 0 24 24">
+            <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
+          </svg>
+          <span class="label">DOWN</span>
+          <div class="touch-feedback"></div>
+        </button>
+
+        <button class="control-button disabled" id="btn-drop">
+          <svg viewBox="0 0 24 24">
+            <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
+            <path d="M7.41 14.59L12 19.17l4.59-4.58L18 16l-6 6-6-6 1.41-1.41z"/>
+          </svg>
+          <span class="label">HARD DROP</span>
+          <div class="touch-feedback"></div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let ws;
+    let wsConnected = false;
+    let gameActive = false;
+
+    // WebSocket connection
+    function initWebSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        wsConnected = true;
+        ws.send(JSON.stringify({ type: 'register', role: 'controller' }));
+        updateConnectionStatus('Connected', true);
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleMessage(data);
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        updateConnectionStatus('Error', false);
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        wsConnected = false;
+        updateConnectionStatus('Disconnected', false);
+        setTimeout(initWebSocket, 3000);
+      };
+    }
+
+    function handleMessage(data) {
+      if (data.type === 'registered') {
+        console.log('Registered as controller');
+      } else if (data.type === 'game_state') {
+        updateGameState(data);
+      } else if (data.type === 'headset_disconnected') {
+        updateConnectionStatus('Headset Offline', true);
+        disableGameControls();
+      }
+    }
+
+    function updateConnectionStatus(status, connected) {
+      document.getElementById('connection-status').textContent = status;
+      const dot = document.getElementById('status-dot');
+      dot.className = 'status-dot ' + (connected ? 'connected' : 'disconnected');
+    }
+
+    function updateGameState(state) {
+      gameActive = state.gameActive;
+      document.getElementById('score').textContent = state.score || 0;
+      document.getElementById('level').textContent = state.level || 1;
+      document.getElementById('lines').textContent = state.linesCleared || 0;
+
+      if (state.gameActive) {
+        document.getElementById('game-status-text').textContent = 'Game in progress';
+        enableGameControls();
+      } else {
+        document.getElementById('game-status-text').textContent = 'Game over - Start new game';
+        disableGameControls();
+      }
+    }
+
+    function enableGameControls() {
+      ['btn-left', 'btn-right', 'btn-down', 'btn-rotate', 'btn-drop'].forEach(id => {
+        document.getElementById(id).classList.remove('disabled');
+      });
+    }
+
+    function disableGameControls() {
+      ['btn-left', 'btn-right', 'btn-down', 'btn-rotate', 'btn-drop'].forEach(id => {
+        document.getElementById(id).classList.add('disabled');
+      });
+    }
+
+    function sendControl(action) {
+      if (wsConnected && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'control', action: action }));
+
+        // Haptic feedback if available
+        if (navigator.vibrate) {
+          navigator.vibrate(50);
+        }
+      }
+    }
+
+    // Button event listeners
+    document.getElementById('btn-new-game').addEventListener('click', () => {
+      sendControl('new_game');
+    });
+
+    document.getElementById('btn-left').addEventListener('click', () => {
+      if (!gameActive) return;
+      sendControl('left');
+    });
+
+    document.getElementById('btn-right').addEventListener('click', () => {
+      if (!gameActive) return;
+      sendControl('right');
+    });
+
+    document.getElementById('btn-down').addEventListener('click', () => {
+      if (!gameActive) return;
+      sendControl('down');
+    });
+
+    document.getElementById('btn-rotate').addEventListener('click', () => {
+      if (!gameActive) return;
+      sendControl('rotate');
+    });
+
+    document.getElementById('btn-drop').addEventListener('click', () => {
+      if (!gameActive) return;
+      sendControl('drop');
+    });
+
+    // Prevent default touch behaviors
+    document.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+    }, { passive: false });
+
+    // Keep screen awake
+    if ('wakeLock' in navigator) {
+      let wakeLock = null;
+      const requestWakeLock = async () => {
+        try {
+          wakeLock = await navigator.wakeLock.request('screen');
+          console.log('Wake lock activated');
+        } catch (err) {
+          console.error('Wake lock error:', err);
+        }
+      };
+      requestWakeLock();
+
+      document.addEventListener('visibilitychange', () => {
+        if (wakeLock !== null && document.visibilityState === 'visible') {
+          requestWakeLock();
+        }
+      });
+    }
+
+    // Initialize
+    initWebSocket();
+  </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "webxr-ar-tetris",
+  "version": "1.0.0",
+  "description": "WebXR AR Tetris game for Quest headset with mobile phone controls",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["webxr", "ar", "tetris", "quest", "mobile-controls"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.2"
+  }
+}
