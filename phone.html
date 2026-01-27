@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Tetris Controller - Phone</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+            overflow: hidden;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .status-bar {
+            background: rgba(255,255,255,0.2);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            color: white;
+            backdrop-filter: blur(10px);
+        }
+        .connection-info {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #ff0;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: auto auto auto;
+            gap: 15px;
+            padding: 20px;
+        }
+        .btn {
+            background: rgba(255,255,255,0.9);
+            border: none;
+            border-radius: 15px;
+            padding: 25px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            cursor: pointer;
+            touch-action: manipulation;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .btn-left {
+            grid-column: 1;
+            grid-row: 2;
+        }
+        .btn-right {
+            grid-column: 3;
+            grid-row: 2;
+        }
+        .btn-down {
+            grid-column: 2;
+            grid-row: 3;
+        }
+        .btn-rotate {
+            grid-column: 2;
+            grid-row: 1;
+        }
+        .btn-pause {
+            grid-column: 1 / 4;
+            grid-row: 4;
+            background: rgba(255,100,100,0.9);
+            color: white;
+        }
+        .qr-section {
+            background: rgba(255,255,255,0.2);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            color: white;
+            backdrop-filter: blur(10px);
+        }
+        #qrCode {
+            margin: 15px auto;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        .instructions {
+            color: white;
+            text-align: center;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="status-bar">
+            <div id="status">Connecting...</div>
+            <div class="connection-info" id="connectionInfo">Scan QR code or enter connection ID</div>
+        </div>
+        
+        <div class="qr-section" id="qrSection">
+            <div>Connection ID:</div>
+            <div id="connectionId" style="font-size: 24px; font-weight: bold; margin: 10px 0;">Generating...</div>
+            <div id="qrCode"></div>
+            <div class="instructions">Scan QR code with Quest headset or enter ID manually</div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn btn-rotate" id="rotate">↻ Rotate</button>
+            <button class="btn btn-left" id="left">← Left</button>
+            <button class="btn btn-right" id="right">→ Right</button>
+            <button class="btn btn-down" id="down">↓ Down</button>
+            <button class="btn btn-pause" id="pause">Pause</button>
+        </div>
+    </div>
+    
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script type="module" src="phone-controller.js"></script>
+</body>
+</html>
+

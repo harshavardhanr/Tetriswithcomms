@@ -1,0 +1,332 @@
+import { TetrisGame } from './tetris-game.js';
+import { WebRTCSignaling, PeerJSSignaling } from './webrtc-signaling.js';
+
+// Import Three.js from CDN (will be loaded in HTML)
+let THREE;
+
+class VRTetris {
+    constructor() {
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.xrSession = null;
+        this.game = null;
+        this.signaling = null;
+        this.peerSignaling = null;
+        this.connectionId = null;
+        this.isConnected = false;
+        
+        this.boardGroup = null;
+        this.blockSize = 0.1;
+        this.boardWidth = 10;
+        this.boardHeight = 20;
+        
+        this.init();
+    }
+    
+    async init() {
+        // Load Three.js
+        THREE = await import('three');
+        
+        // Get connection ID from URL or generate one
+        const urlParams = new URLSearchParams(window.location.search);
+        this.connectionId = urlParams.get('id') || this.generateConnectionId();
+        
+        // Setup signaling using PeerJS (no local server needed)
+        this.peerSignaling = new PeerJSSignaling(this.connectionId, false);
+        this.signaling = new WebRTCSignaling((message) => this.handleMessage(message));
+        
+        // Setup connection
+        await this.setupConnection();
+        
+        // Setup Three.js scene
+        this.setupScene();
+        
+        // Setup WebXR
+        await this.setupWebXR();
+        
+        // Start game loop
+        this.game = new TetrisGame();
+        this.animate();
+        
+        // Update connection status
+        this.updateStatus('Waiting for phone connection...', 'Scan QR code on phone');
+    }
+    
+    generateConnectionId() {
+        return Math.random().toString(36).substring(2, 8).toUpperCase();
+    }
+    
+    async setupConnection() {
+        try {
+            // Initialize PeerJS signaling
+            await this.peerSignaling.initialize((message) => {
+                this.handleMessage(message);
+            });
+            
+            // Display connection ID
+            document.getElementById('connectionStatus').textContent = 
+                `Connection ID: ${this.connectionId}`;
+        } catch (error) {
+            console.error('Connection setup error:', error);
+            document.getElementById('connectionStatus').textContent = 
+                `Connection Error: ${error.message}`;
+        }
+    }
+    
+    setupScene() {
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x000000);
+        
+        // Camera will be set by WebXR
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        // Renderer
+        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.xr.enabled = true;
+        document.body.appendChild(this.renderer.domElement);
+        
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        this.scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(5, 10, 5);
+        this.scene.add(directionalLight);
+        
+        // Create board
+        this.createBoard();
+        
+        // Add score display
+        this.createScoreDisplay();
+    }
+    
+    createBoard() {
+        this.boardGroup = new THREE.Group();
+        
+        // Board frame
+        const frameGeometry = new THREE.BoxGeometry(
+            this.boardWidth * this.blockSize + 0.2,
+            this.boardHeight * this.blockSize + 0.2,
+            0.1
+        );
+        const frameMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+        const frame = new THREE.Mesh(frameGeometry, frameMaterial);
+        frame.position.z = -0.05;
+        this.boardGroup.add(frame);
+        
+        // Grid lines
+        const gridMaterial = new THREE.LineBasicMaterial({ color: 0x222222 });
+        
+        // Vertical lines
+        for (let x = 0; x <= this.boardWidth; x++) {
+            const points = [
+                new THREE.Vector3(x * this.blockSize - this.boardWidth * this.blockSize / 2, 
+                                 -this.boardHeight * this.blockSize / 2, 0),
+                new THREE.Vector3(x * this.blockSize - this.boardWidth * this.blockSize / 2, 
+                                 this.boardHeight * this.blockSize / 2, 0)
+            ];
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(geometry, gridMaterial);
+            this.boardGroup.add(line);
+        }
+        
+        // Horizontal lines
+        for (let y = 0; y <= this.boardHeight; y++) {
+            const points = [
+                new THREE.Vector3(-this.boardWidth * this.blockSize / 2, 
+                                 y * this.blockSize - this.boardHeight * this.blockSize / 2, 0),
+                new THREE.Vector3(this.boardWidth * this.blockSize / 2, 
+                                 y * this.blockSize - this.boardHeight * this.blockSize / 2, 0)
+            ];
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(geometry, gridMaterial);
+            this.boardGroup.add(line);
+        }
+        
+        // Position board in front of user
+        this.boardGroup.position.set(0, 1.5, -2);
+        this.scene.add(this.boardGroup);
+        
+        // Store block meshes
+        this.blockMeshes = [];
+    }
+    
+    createScoreDisplay() {
+        // Score will be displayed as text in 3D space
+        // For simplicity, we'll use HTML overlay
+    }
+    
+    async setupWebXR() {
+        if (navigator.xr) {
+            const supported = await navigator.xr.isSessionSupported('immersive-vr');
+            if (supported) {
+                const button = document.createElement('button');
+                button.textContent = 'Enter VR';
+                button.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);padding:20px;font-size:24px;z-index:1000;';
+                button.onclick = () => this.enterVR();
+                document.body.appendChild(button);
+            } else {
+                this.updateStatus('WebXR not supported', 'Please use a Quest headset');
+            }
+        } else {
+            this.updateStatus('WebXR not available', 'Please use a Quest headset');
+        }
+    }
+    
+    async enterVR() {
+        try {
+            this.xrSession = await navigator.xr.requestSession('immersive-vr', {
+                requiredFeatures: ['local-floor']
+            });
+            
+            this.renderer.xr.setSession(this.xrSession);
+            
+            // Remove button
+            const button = document.querySelector('button');
+            if (button) button.remove();
+            
+            this.updateStatus('VR Active', 'Connected');
+        } catch (error) {
+            console.error('Error entering VR:', error);
+            this.updateStatus('VR Error', error.message);
+        }
+    }
+    
+    handleMessage(message) {
+        if (message.type === 'connected') {
+            this.isConnected = true;
+            this.updateStatus('Connected', 'Phone controller ready');
+        } else if (message.type === 'disconnected') {
+            this.isConnected = false;
+            this.updateStatus('Disconnected', 'Waiting for connection...');
+        } else if (message.type === 'command') {
+            this.handleCommand(message.command);
+        } else if (message.type === 'gameState') {
+            // Sync game state if needed
+        } else if (message.type === 'peerReady') {
+            this.updateStatus('Ready', `Peer ID: ${message.id}`);
+        }
+    }
+    
+    handleCommand(command) {
+        if (!this.game) return;
+        
+        switch (command) {
+            case 'left':
+                this.game.movePiece(-1, 0);
+                break;
+            case 'right':
+                this.game.movePiece(1, 0);
+                break;
+            case 'down':
+                this.game.movePiece(0, 1);
+                break;
+            case 'rotate':
+                this.game.rotatePiece();
+                break;
+            case 'hardDrop':
+                this.game.hardDrop();
+                break;
+            case 'pause':
+                this.game.togglePause();
+                break;
+        }
+        
+        this.updateBoard();
+    }
+    
+    updateBoard() {
+        if (!this.game || !this.boardGroup) return;
+        
+        // Remove old blocks
+        this.blockMeshes.forEach(mesh => {
+            this.boardGroup.remove(mesh);
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+        });
+        this.blockMeshes = [];
+        
+        const state = this.game.getBoardState();
+        
+        // Create blocks for filled cells
+        const blockGeometry = new THREE.BoxGeometry(
+            this.blockSize * 0.9,
+            this.blockSize * 0.9,
+            this.blockSize * 0.9
+        );
+        
+        for (let y = 0; y < state.board.length; y++) {
+            for (let x = 0; x < state.board[y].length; x++) {
+                if (state.board[y][x] === 1) {
+                    // Locked block
+                    const material = new THREE.MeshStandardMaterial({ 
+                        color: 0x00ff00,
+                        emissive: 0x004400
+                    });
+                    const block = new THREE.Mesh(blockGeometry, material);
+                    block.position.set(
+                        x * this.blockSize - this.boardWidth * this.blockSize / 2 + this.blockSize / 2,
+                        (this.boardHeight - y - 1) * this.blockSize - this.boardHeight * this.blockSize / 2 + this.blockSize / 2,
+                        this.blockSize / 2
+                    );
+                    this.boardGroup.add(block);
+                    this.blockMeshes.push(block);
+                } else if (state.board[y][x] === 2) {
+                    // Current piece
+                    const material = new THREE.MeshStandardMaterial({ 
+                        color: 0x00ffff,
+                        emissive: 0x004444
+                    });
+                    const block = new THREE.Mesh(blockGeometry, material);
+                    block.position.set(
+                        x * this.blockSize - this.boardWidth * this.blockSize / 2 + this.blockSize / 2,
+                        (this.boardHeight - y - 1) * this.blockSize - this.boardHeight * this.blockSize / 2 + this.blockSize / 2,
+                        this.blockSize / 2
+                    );
+                    this.boardGroup.add(block);
+                    this.blockMeshes.push(block);
+                }
+            }
+        }
+        
+        // Update score display
+        document.getElementById('gameStatus').innerHTML = 
+            `Score: ${state.score} | Level: ${state.level} | Lines: ${state.lines}`;
+        
+        if (state.gameOver) {
+            document.getElementById('gameStatus').innerHTML += '<br>GAME OVER';
+        } else if (state.paused) {
+            document.getElementById('gameStatus').innerHTML += '<br>PAUSED';
+        }
+    }
+    
+    animate() {
+        this.renderer.setAnimationLoop(() => {
+            if (this.game) {
+                this.game.drop();
+                this.updateBoard();
+            }
+            
+            this.renderer.render(this.scene, this.camera);
+        });
+    }
+    
+    updateStatus(status, info) {
+        document.getElementById('connectionStatus').textContent = status;
+        if (info) {
+            document.getElementById('gameStatus').textContent = info;
+        }
+    }
+}
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        new VRTetris();
+    });
+} else {
+    new VRTetris();
+}
+
