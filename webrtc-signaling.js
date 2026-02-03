@@ -225,6 +225,9 @@ export class PeerJSSignaling {
             
             this.peer.on('error', (err) => {
                 console.error('PeerJS error:', err);
+            if (this.onMessageCallback) {
+                this.onMessageCallback({ type: 'peerError', error: err?.type || 'peer-error', details: err?.message });
+            }
                 // Fallback to manual signaling if PeerJS fails
                 if (err.type === 'peer-unavailable' && !this.isHost) {
                     // Try again after a delay
@@ -284,6 +287,9 @@ export class PeerJSSignaling {
         
         conn.on('error', (err) => {
             console.error('Connection error:', err);
+            if (this.onMessageCallback) {
+                this.onMessageCallback({ type: 'peerError', error: err?.type || 'connection-error', details: err?.message });
+            }
         });
     }
     
