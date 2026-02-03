@@ -46,15 +46,21 @@ class PhoneController {
         this.peerSignaling = new PeerJSSignaling(this.connectionId, this.isHost);
         this.signaling = new WebRTCSignaling((message) => this.handleMessage(message));
         try {
-            // Initialize PeerJS signaling
+            this.updateStatus('Connecting…', 'Registering code…');
             await this.peerSignaling.initialize((message) => {
                 this.handleMessage(message);
             });
-            
-            this.updateStatus('Ready', 'Waiting for VR headset to connect');
+            // If peer opened already, handleMessage('peerReady') will update UI; else wait for it
+            if (!document.getElementById('btnConnect').disabled) {
+                this.updateStatus('Ready', 'Type this code on the VR headset');
+                const btn = document.getElementById('btnConnect');
+                if (btn) { btn.textContent = 'Waiting for VR…'; btn.disabled = true; }
+            }
         } catch (error) {
             console.error('Error starting connection:', error);
             this.updateStatus('Connection Error', error.message);
+            const btn = document.getElementById('btnConnect');
+            if (btn) { btn.disabled = false; btn.textContent = 'Start & wait for VR'; }
         }
     }
     
@@ -122,28 +128,33 @@ class PhoneController {
     }
     
     sendCommand(command) {
-        // Send via PeerJS connection
-        if (this.peerSignaling && this.isConnected) {
-            this.peerSignaling.sendSignal({
-                type: 'command',
-                command: command
-            });
-        } else {
-            console.log('Not connected, command:', command);
+        if (!this.peerSignaling) return;
+        const sent = this.peerSignaling.sendSignal({ type: 'command', command });
+        if (!sent && this.isConnected) {
+            console.warn('Command not sent (connection may have dropped):', command);
         }
     }
     
     handleMessage(message) {
-        if (message.type === 'connected' || message.type === 'peerReady') {
+        if (message.type === 'peerReady') {
+            this.updateStatus('Ready', 'Type this code on the VR headset');
+            document.getElementById('connectionInfo').textContent = 'Waiting for VR to connect…';
+            const btn = document.getElementById('btnConnect');
+            if (btn) { btn.textContent = 'Waiting for VR…'; btn.disabled = true; }
+        } else if (message.type === 'connected') {
             this.isConnected = true;
             this.updateStatus('Connected', 'VR headset ready');
             document.getElementById('connectionInfo').textContent = 'Connected to VR headset';
             document.getElementById('connectionInfo').style.color = '#0f0';
+            const btn = document.getElementById('btnConnect');
+            if (btn) { btn.textContent = 'Connected'; btn.disabled = true; }
         } else if (message.type === 'disconnected') {
             this.isConnected = false;
             this.updateStatus('Disconnected', 'Waiting for VR headset');
             document.getElementById('connectionInfo').textContent = 'Disconnected';
             document.getElementById('connectionInfo').style.color = '#ff0';
+            const btn = document.getElementById('btnConnect');
+            if (btn) { btn.textContent = 'Start & wait for VR'; btn.disabled = false; }
         }
     }
     
