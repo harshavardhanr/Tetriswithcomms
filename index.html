@@ -30,8 +30,14 @@
 <body>
     <div id="info">
         <div>WebXR Tetris - Quest Headset</div>
-        <div id="connectionStatus">Connecting...</div>
-        <div id="gameStatus">Waiting for connection...</div>
+        <div id="connectionStatus">Enter code to connect</div>
+        <div id="gameStatus">Type the same code as on your phone</div>
+    </div>
+    <div id="connectPanel" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.8);padding:30px;border-radius:10px;z-index:200;">
+        <div style="color:white;margin-bottom:15px;">Enter code from phone:</div>
+        <input type="text" id="connectionCode" maxlength="8" placeholder="e.g. ABC123" 
+               style="font-size:24px;padding:15px;width:200px;text-align:center;text-transform:uppercase;letter-spacing:4px;">
+        <button id="btnConnect" style="display:block;margin-top:15px;padding:15px 30px;font-size:18px;cursor:pointer;">Connect</button>
     </div>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script type="importmap">
