@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Tetris Controller - Phone</title>
+    <title>Tetris Controller</title>
     <style>
         * {
             margin: 0;
@@ -11,139 +11,353 @@
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
         }
+
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
+            padding: 20px;
+            color: white;
+            touch-action: none;
+        }
+
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 500px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        #connection-section {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        #connection-status {
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 15px;
+            background: rgba(255, 165, 0, 0.3);
+        }
+
+        #connection-status.connected {
+            background: rgba(76, 175, 80, 0.5);
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            transition: transform 0.1s, background 0.2s;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        #controls {
+            display: none;
+            flex: 1;
+            flex-direction: column;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        #controls.active {
+            display: flex;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .control-btn {
+            flex: 1;
+            min-height: 80px;
+            font-size: 24px;
+            border-radius: 15px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(10px);
+            display: flex;
             align-items: center;
             justify-content: center;
-            min-height: 100vh;
-            padding: 20px;
-            overflow: hidden;
-        }
-        .container {
-            width: 100%;
-            max-width: 600px;
-            display: flex;
             flex-direction: column;
-            gap: 20px;
-        }
-        .status-bar {
-            background: rgba(255,255,255,0.2);
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-            color: white;
-            backdrop-filter: blur(10px);
-        }
-        .connection-info {
-            margin-top: 10px;
-            font-size: 14px;
-            color: #ff0;
-        }
-        .controls {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            grid-template-rows: auto auto auto;
-            gap: 15px;
-            padding: 20px;
-        }
-        .btn {
-            background: rgba(255,255,255,0.9);
-            border: none;
-            border-radius: 15px;
-            padding: 25px;
-            font-size: 24px;
-            font-weight: bold;
-            color: #333;
-            cursor: pointer;
-            touch-action: manipulation;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            transition: all 0.2s;
+            gap: 5px;
             user-select: none;
         }
-        .btn:active {
+
+        .control-btn:active {
+            background: rgba(255, 255, 255, 0.4);
             transform: scale(0.95);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }
-        .btn-left {
-            grid-column: 1;
-            grid-row: 2;
+
+        .control-btn .emoji {
+            font-size: 32px;
         }
-        .btn-right {
-            grid-column: 3;
-            grid-row: 2;
+
+        .control-btn .label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
-        .btn-down {
-            grid-column: 2;
-            grid-row: 3;
+
+        .control-rotate {
+            background: rgba(255, 193, 7, 0.3);
         }
-        .btn-rotate {
-            grid-column: 2;
-            grid-row: 1;
+
+        .control-drop {
+            background: rgba(244, 67, 54, 0.3);
         }
-        .btn-pause {
-            grid-column: 1 / 4;
-            grid-row: 4;
-            background: rgba(255,100,100,0.9);
-            color: white;
+
+        .spacer {
+            flex: 1;
         }
-        .btn-connect {
-            background: rgba(0,200,100,0.9);
-            color: white;
-            padding: 15px 25px;
-            font-size: 18px;
-        }
-        .qr-section {
-            background: rgba(255,255,255,0.2);
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-            color: white;
-            backdrop-filter: blur(10px);
-        }
-        #qrCode {
-            margin: 15px auto;
-            background: white;
-            padding: 10px;
-            border-radius: 5px;
-            display: inline-block;
-        }
-        .instructions {
-            color: white;
-            text-align: center;
-            font-size: 14px;
-            margin-top: 10px;
+
+        @media (max-height: 600px) {
+            .control-btn {
+                min-height: 60px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="status-bar">
-            <div id="status">Connecting...</div>
-            <div class="connection-info" id="connectionInfo">Scan QR code or enter connection ID</div>
+        <header>
+            <h1>🎮 Tetris Controller</h1>
+        </header>
+
+        <div id="connection-section">
+            <div id="connection-status">Not Connected</div>
+            <div class="input-group">
+                <label for="peer-id-input">Enter VR Headset Peer ID:</label>
+                <input type="text" id="peer-id-input" placeholder="vr-xxxxxxxxx">
+            </div>
+            <button id="connect-btn">Connect</button>
         </div>
-        
-        <div class="qr-section" id="qrSection">
-            <div>Connection code (type same code on both devices):</div>
-            <input type="text" id="connectionCode" maxlength="8" placeholder="e.g. ABC123" 
-                   style="font-size: 24px; padding: 12px; margin: 10px 0; text-align: center; width: 180px; text-transform: uppercase; letter-spacing: 4px;">
-            <button class="btn btn-connect" id="btnConnect" style="margin-top: 10px;">Start & wait for VR</button>
-            <div class="instructions">Type this code in the VR headset to connect</div>
-        </div>
-        
-        <div class="controls">
-            <button class="btn btn-rotate" id="rotate">↻ Rotate</button>
-            <button class="btn btn-left" id="left">← Left</button>
-            <button class="btn btn-right" id="right">→ Right</button>
-            <button class="btn btn-down" id="down">↓ Down</button>
-            <button class="btn btn-pause" id="pause">Pause</button>
+
+        <div id="controls">
+            <div class="control-row">
+                <button class="control-btn control-rotate" data-command="rotate">
+                    <span class="emoji">🔄</span>
+                    <span class="label">Rotate</span>
+                </button>
+            </div>
+
+            <div class="control-row">
+                <button class="control-btn" data-command="left">
+                    <span class="emoji">⬅️</span>
+                    <span class="label">Left</span>
+                </button>
+                <button class="control-btn" data-command="down">
+                    <span class="emoji">⬇️</span>
+                    <span class="label">Down</span>
+                </button>
+                <button class="control-btn" data-command="right">
+                    <span class="emoji">➡️</span>
+                    <span class="label">Right</span>
+                </button>
+            </div>
+
+            <div class="control-row">
+                <button class="control-btn control-drop" data-command="drop">
+                    <span class="emoji">⚡</span>
+                    <span class="label">Hard Drop</span>
+                </button>
+            </div>
         </div>
     </div>
-    
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script type="module" src="phone-controller.js"></script>
+
+    <script>
+        class PhoneController {
+            constructor() {
+                this.peer = null;
+                this.conn = null;
+                this.connected = false;
+                this.setupUI();
+                this.loadPeerJS();
+            }
+
+            async loadPeerJS() {
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/peerjs@1.5.0/dist/peerjs.min.js';
+                script.onload = () => {
+                    console.log('PeerJS loaded');
+                    document.getElementById('connect-btn').disabled = false;
+                };
+                document.head.appendChild(script);
+            }
+
+            setupUI() {
+                const connectBtn = document.getElementById('connect-btn');
+                const peerIdInput = document.getElementById('peer-id-input');
+
+                connectBtn.disabled = true;
+                connectBtn.addEventListener('click', () => this.connect());
+
+                // Allow Enter key to connect
+                peerIdInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.connect();
+                    }
+                });
+
+                // Setup control buttons
+                const controlButtons = document.querySelectorAll('.control-btn');
+                controlButtons.forEach(btn => {
+                    // Prevent default touch behavior
+                    btn.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        this.sendCommand(btn.dataset.command);
+                    });
+
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.sendCommand(btn.dataset.command);
+                    });
+                });
+
+                // Prevent scrolling on the whole page
+                document.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                }, { passive: false });
+            }
+
+            async connect() {
+                const peerId = document.getElementById('peer-id-input').value.trim();
+
+                if (!peerId) {
+                    alert('Please enter a Peer ID');
+                    return;
+                }
+
+                if (!window.Peer) {
+                    alert('PeerJS is still loading, please wait...');
+                    return;
+                }
+
+                try {
+                    // Create peer with random ID
+                    this.peer = new Peer('phone-' + Math.random().toString(36).substr(2, 9));
+
+                    this.peer.on('open', (id) => {
+                        console.log('Phone Peer ID:', id);
+                        this.connectToPeer(peerId);
+                    });
+
+                    this.peer.on('error', (err) => {
+                        console.error('Peer error:', err);
+                        this.updateConnectionStatus('Connection Error', false);
+                    });
+
+                } catch (err) {
+                    console.error('Failed to create peer:', err);
+                    alert('Failed to initialize connection');
+                }
+            }
+
+            connectToPeer(peerId) {
+                this.updateConnectionStatus('Connecting...', false);
+
+                this.conn = this.peer.connect(peerId, {
+                    reliable: true
+                });
+
+                this.conn.on('open', () => {
+                    console.log('Connected to VR headset!');
+                    this.connected = true;
+                    this.updateConnectionStatus('Connected to VR Headset', true);
+                    document.getElementById('controls').classList.add('active');
+                });
+
+                this.conn.on('close', () => {
+                    console.log('Connection closed');
+                    this.connected = false;
+                    this.updateConnectionStatus('Disconnected', false);
+                    document.getElementById('controls').classList.remove('active');
+                });
+
+                this.conn.on('error', (err) => {
+                    console.error('Connection error:', err);
+                    this.updateConnectionStatus('Connection Failed', false);
+                });
+            }
+
+            updateConnectionStatus(message, connected) {
+                const statusElement = document.getElementById('connection-status');
+                statusElement.textContent = message;
+
+                if (connected) {
+                    statusElement.classList.add('connected');
+                } else {
+                    statusElement.classList.remove('connected');
+                }
+            }
+
+            sendCommand(command) {
+                if (this.connected && this.conn) {
+                    this.conn.send({ command: command });
+                    console.log('Sent command:', command);
+
+                    // Visual feedback
+                    navigator.vibrate && navigator.vibrate(50);
+                }
+            }
+        }
+
+        // Initialize controller
+        const controller = new PhoneController();
+    </script>
 </body>
 </html>
-

@@ -1,129 +1,177 @@
-# WebXR Tetris - Quest Headset with Phone Controller
+# WebXR Tetris Prototype
 
-A WebXR prototype of Tetris that runs on a Quest VR headset and is controlled via a phone-based UI. The communication between devices uses WebRTC peer-to-peer technology, requiring no local server.
+A WebXR-based Tetris game that runs on VR headsets with passthrough mode, controlled by a mobile phone interface.
 
 ## Features
 
-- **WebXR Support**: Runs on Quest VR headsets using WebXR API
-- **Phone Controller**: Landscape-optimized UI for mobile devices
-- **Peer-to-Peer Communication**: Uses PeerJS for signaling and WebRTC DataChannels for game commands
-- **No Local Server Required**: Uses PeerJS free signaling servers (no local server setup needed)
+- **WebXR AR Mode**: View the game in augmented reality using passthrough on compatible VR headsets
+- **3D Tetris Board**: Classic Tetris gameplay rendered in 3D space
+- **Mobile Controller**: Control the game using a separate mobile phone interface
+- **WebRTC Connection**: Real-time communication between headset and phone using PeerJS
 
-## Deployment Options
+## How It Works
 
-### Option 1: GitHub Pages (Recommended - Free HTTPS Hosting)
+The game consists of two interfaces:
 
-1. **Create a GitHub repository:**
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git branch -M main
-   git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
-   git push -u origin main
-   ```
+1. **Headset View (index.html)**: The main game runs in WebXR AR mode on a VR headset
+2. **Phone Controller (phone.html)**: A mobile interface that sends control commands to the headset
 
-2. **Enable GitHub Pages:**
-   - Go to your repository on GitHub
-   - Click **Settings** → **Pages**
-   - Under "Source", select **main** branch (or your default branch)
-   - Click **Save**
-   - Your site will be available at: `https://YOUR_USERNAME.github.io/YOUR_REPO_NAME/`
-
-3. **Access your app:**
-   - Phone controller: `https://YOUR_USERNAME.github.io/YOUR_REPO_NAME/phone.html`
-   - VR headset: `https://YOUR_USERNAME.github.io/YOUR_REPO_NAME/index.html`
-
-**Note:** GitHub Pages provides HTTPS automatically, which is required for WebRTC!
-
-### Option 2: Local Development Server
-
-For local testing, use a simple HTTP server:
-
-```bash
-# Python 3
-python3 -m http.server 8000
-
-# Node.js (if you have http-server installed)
-npx http-server -p 8000
-```
-
-Then access:
-- Phone controller: `http://localhost:8000/phone.html`
-- VR headset: `http://YOUR_LOCAL_IP:8000/index.html` (use your computer's IP for Quest)
+The two devices communicate via WebRTC using PeerJS for peer-to-peer connection.
 
 ## Setup Instructions
 
-### For Quest Headset (VR)
+### Requirements
 
-1. Open the Quest browser (Oculus Browser)
-2. Navigate to your hosted URL (GitHub Pages or local server)
-3. Click "Enter VR" button to start the WebXR session
-4. Note the Connection ID displayed on screen
+- **VR Headset**: A WebXR-compatible device (Meta Quest 2/3/Pro, Pico, etc.) with passthrough support
+- **Mobile Phone**: Any modern smartphone with a web browser
+- **HTTPS Server**: Both devices must access the app via HTTPS (required for WebXR)
 
-### For Phone Controller
+### Running Locally
 
-1. Open `phone.html` in your phone's browser (landscape mode recommended)
-2. A Connection ID and QR code will be displayed
-3. Either:
-   - Scan the QR code with the Quest headset, OR
-   - Manually enter the Connection ID in the Quest browser URL: `index.html?id=CONNECTION_ID`
+1. **Serve the files over HTTPS**:
 
-### Connection Process
+   You can use any HTTPS server. Here are some options:
 
-The system uses PeerJS for peer-to-peer communication:
-- **Signaling**: PeerJS free signaling servers (0.peerjs.com) - no local server needed
-- **Data Transfer**: WebRTC DataChannels via PeerJS for low-latency game commands
-- **Connection ID**: Phone generates a unique ID, VR headset connects using this ID
+   **Option A: Using Python (requires SSL certificate)**
+   ```bash
+   python3 -m http.server 8000
+   ```
+   Then use a tool like ngrok to create HTTPS tunnel:
+   ```bash
+   ngrok http 8000
+   ```
 
-## Controls (Phone)
+   **Option B: Using Node.js http-server with ngrok**
+   ```bash
+   npx http-server -p 8000
+   ngrok http 8000
+   ```
 
-- **← Left**: Move piece left
-- **→ Right**: Move piece right
-- **↓ Down**: Move piece down
-- **↻ Rotate**: Rotate piece
-- **Pause**: Pause/unpause game
+2. **Access on VR Headset**:
+   - Open the browser on your VR headset
+   - Navigate to your HTTPS URL (e.g., `https://your-ngrok-url.ngrok.io/index.html`)
+   - Click "Start AR Session" button
+   - Note the Peer ID displayed on screen (e.g., "vr-abc123xyz")
+
+3. **Connect from Phone**:
+   - Open the browser on your mobile phone
+   - Navigate to `https://your-ngrok-url.ngrok.io/phone.html`
+   - Enter the Peer ID from the headset
+   - Click "Connect"
+   - Once connected, use the on-screen controls to play
+
+### GitHub Pages Deployment
+
+You can also deploy to GitHub Pages with a custom domain that supports HTTPS:
+
+1. Push files to your repository
+2. Enable GitHub Pages in repository settings
+3. Access via your GitHub Pages URL
+
+Note: GitHub Pages provides HTTPS by default.
+
+## Controls
+
+### Mobile Controller Buttons
+
+- **⬅️ Left**: Move piece left
+- **➡️ Right**: Move piece right
+- **⬇️ Down**: Move piece down faster
+- **🔄 Rotate**: Rotate piece clockwise
+- **⚡ Hard Drop**: Instantly drop piece to bottom
+
+## Game Rules
+
+- Standard Tetris gameplay
+- Clear complete horizontal lines to score points
+- Game ends when pieces reach the top of the board
+- Score: 100 points per line cleared
 
 ## Technical Details
 
-### Architecture
+### WebXR Implementation
 
-- `index.html` / `vr-tetris.js`: VR headset application
-- `phone.html` / `phone-controller.js`: Phone controller UI
-- `tetris-game.js`: Core Tetris game logic
-- `webrtc-signaling.js`: WebRTC connection and signaling management
+- Uses WebXR Device API with `immersive-ar` mode
+- Renders using WebGL 2.0 with custom shaders
+- Game board positioned 1 meter in front of the user
+- Board size: 10 blocks wide × 20 blocks tall
 
-### Communication Flow
+### Networking
 
-1. Phone generates Connection ID and creates WebRTC offer
-2. Offer is stored in localStorage with Connection ID
-3. VR headset polls localStorage for signals matching Connection ID
-4. VR headset creates answer and stores it in localStorage
-5. Phone receives answer and establishes WebRTC connection
-6. Game commands are sent via WebRTC DataChannel
+- **PeerJS**: Simplifies WebRTC peer-to-peer connections
+- **Data Channel**: Sends control commands as JSON objects
+- **Connection Flow**:
+  1. Headset creates peer with ID "vr-xxxxx"
+  2. Phone creates peer with ID "phone-xxxxx"
+  3. Phone connects to headset using the headset's peer ID
+  4. Commands sent as: `{ command: "left" | "right" | "down" | "rotate" | "drop" }`
 
-### Limitations
+### Browser Compatibility
 
-- Requires internet connection (for PeerJS signaling servers)
-- Requires HTTPS or localhost (WebRTC requirement)
-- First connection may take a few seconds to establish
-- Both devices need to be able to access PeerJS servers
+- **Headset**: Requires WebXR support (Meta Quest Browser, Wolvic, etc.)
+- **Phone**: Any modern mobile browser (Chrome, Safari, Firefox)
 
-## Browser Compatibility
+## Development
 
-- **Quest**: Oculus Browser (WebXR support required)
-- **Phone**: Modern browsers with WebRTC support (Chrome, Safari, Firefox)
+### File Structure
 
-## Development Notes
+```
+.
+├── index.html      # VR headset view (main game)
+├── phone.html      # Mobile controller interface
+└── README.md       # This file
+```
 
-To test locally without a Quest headset:
-- Use Chrome with WebXR emulation flags
-- Or test the phone controller separately
+### Modifying the Game
 
-## Future Improvements
+**Game Logic**: Located in the `TetrisGame` class in `index.html`
+- Adjust board size: Change `this.width` and `this.height`
+- Change drop speed: Modify `this.dropInterval` (milliseconds)
+- Add new pieces: Extend `this.pieces` object
 
-- Add game state synchronization
-- Implement better signaling mechanism (WebSocket fallback)
-- Add multiplayer support
-- Improve visual effects and animations
+**Visual Appearance**: Located in the `WebXRTetrisRenderer` class
+- Block size: Modify `blockSize` variable in `renderGame()`
+- Board position: Adjust `boardOffsetX`, `boardOffsetY`, `boardOffsetZ`
+- Colors: Modify `this.colors` array in `TetrisGame`
 
+**Controller Layout**: Located in `phone.html`
+- Button arrangement: Modify the `.control-row` divs
+- Styling: Update the CSS in the `<style>` section
+
+## Troubleshooting
+
+### "WebXR not supported" Error
+- Ensure you're using a WebXR-compatible browser on your headset
+- Make sure you're accessing via HTTPS
+
+### Connection Fails Between Devices
+- Verify both devices are accessing via the same HTTPS URL
+- Check that the Peer ID is entered correctly (case-sensitive)
+- Ensure both devices have internet connection (PeerJS requires signaling server)
+
+### AR Session Won't Start
+- Grant camera permissions if prompted
+- Some headsets require "passthrough" to be enabled in settings
+- Try restarting the browser
+
+### Controls Not Working
+- Verify connection status shows "Connected" on phone
+- Check browser console for errors
+- Try refreshing both pages and reconnecting
+
+## Future Enhancements
+
+Potential improvements for this prototype:
+
+- Add sound effects and music
+- Implement multiplayer mode
+- Add power-ups and special pieces
+- Create a lobby system for easier pairing
+- Add hand tracking controls as an alternative to phone
+- Implement score leaderboard
+- Add difficulty levels
+- Create ghost piece preview
+
+## License
+
+This is a prototype/demonstration project. Feel free to use and modify as needed.
