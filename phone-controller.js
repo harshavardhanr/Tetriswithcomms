@@ -41,7 +41,12 @@ class PhoneController {
         }
         
         const btn = document.getElementById('btnConnect');
-        if (btn) { btn.disabled = true; btn.textContent = 'Waiting...'; }
+        if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+        
+        if (this.peerSignaling) {
+            this.peerSignaling.close();
+            this.peerSignaling = null;
+        }
         
         this.peerSignaling = new PeerJSSignaling(this.connectionId, this.isHost);
         this.signaling = new WebRTCSignaling((message) => this.handleMessage(message));
@@ -137,8 +142,10 @@ class PhoneController {
     
     handleMessage(message) {
         if (message.type === 'peerReady') {
+            this.isConnected = false;
             this.updateStatus('Ready', 'Type this code on the VR headset');
             document.getElementById('connectionInfo').textContent = 'Waiting for VR to connect…';
+            document.getElementById('connectionInfo').style.color = '#ff0';
             const btn = document.getElementById('btnConnect');
             if (btn) { btn.textContent = 'Waiting for VR…'; btn.disabled = true; }
         } else if (message.type === 'connected') {
@@ -148,6 +155,12 @@ class PhoneController {
             document.getElementById('connectionInfo').style.color = '#0f0';
             const btn = document.getElementById('btnConnect');
             if (btn) { btn.textContent = 'Connected'; btn.disabled = true; }
+        } else if (message.type === 'peerError') {
+            this.isConnected = false;
+            const details = message.details ? ` (${message.details})` : '';
+            this.updateStatus('Connection Error', `${message.error}${details}`);
+            const btn = document.getElementById('btnConnect');
+            if (btn) { btn.textContent = 'Start & wait for VR'; btn.disabled = false; }
         } else if (message.type === 'disconnected') {
             this.isConnected = false;
             this.updateStatus('Disconnected', 'Waiting for VR headset');
