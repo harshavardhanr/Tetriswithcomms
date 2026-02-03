@@ -3,51 +3,619 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebXR Tetris - Quest Headset</title>
+    <title>WebXR Tetris - Headset View</title>
     <style>
         body {
             margin: 0;
             padding: 0;
-            overflow: hidden;
             font-family: Arial, sans-serif;
             background: #000;
+            color: #fff;
         }
         #info {
             position: absolute;
             top: 10px;
             left: 10px;
-            color: white;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 8px;
             z-index: 100;
-            background: rgba(0,0,0,0.7);
-            padding: 10px;
+        }
+        #canvas {
+            width: 100%;
+            height: 100vh;
+            display: block;
+            touch-action: none;
+        }
+        button {
+            margin: 10px 0;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
             border-radius: 5px;
         }
-        #connectionStatus {
-            color: #ff0;
+        button:hover {
+            background: #45a049;
+        }
+        #connection-status {
+            margin-top: 10px;
+            padding: 8px;
+            border-radius: 5px;
+            background: rgba(255, 165, 0, 0.3);
+        }
+        .connected {
+            background: rgba(76, 175, 80, 0.3) !important;
         }
     </style>
 </head>
 <body>
     <div id="info">
-        <div>WebXR Tetris - Quest Headset</div>
-        <div id="connectionStatus">Enter code to connect</div>
-        <div id="gameStatus">Type the same code as on your phone</div>
+        <h2>WebXR Tetris</h2>
+        <button id="startButton">Start AR Session</button>
+        <div id="connection-status">Waiting for controller...</div>
+        <div id="peer-id">Peer ID: <span id="peer-id-value">Generating...</span></div>
+        <div id="score">Score: <span id="score-value">0</span></div>
     </div>
-    <div id="connectPanel" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.8);padding:30px;border-radius:10px;z-index:200;">
-        <div style="color:white;margin-bottom:15px;">Enter code from phone:</div>
-        <input type="text" id="connectionCode" maxlength="8" placeholder="e.g. ABC123" 
-               style="font-size:24px;padding:15px;width:200px;text-align:center;text-transform:uppercase;letter-spacing:4px;">
-        <button id="btnConnect" style="display:block;margin-top:15px;padding:15px 30px;font-size:18px;cursor:pointer;">Connect</button>
-    </div>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        // WebRTC Signaling and Connection
+        class ControllerConnection {
+            constructor() {
+                this.peerId = this.generatePeerId();
+                this.peer = null;
+                this.conn = null;
+                this.onCommand = null;
+                this.setupPeerJS();
+            }
+
+            generatePeerId() {
+                return 'vr-' + Math.random().toString(36).substr(2, 9);
+            }
+
+            async setupPeerJS() {
+                // Using PeerJS for WebRTC connection
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/peerjs@1.5.0/dist/peerjs.min.js';
+                script.onload = () => this.initializePeer();
+                document.head.appendChild(script);
+            }
+
+            initializePeer() {
+                this.peer = new Peer(this.peerId);
+
+                this.peer.on('open', (id) => {
+                    console.log('Peer ID:', id);
+                    document.getElementById('peer-id-value').textContent = id;
+                });
+
+                this.peer.on('connection', (conn) => {
+                    this.conn = conn;
+                    console.log('Controller connected!');
+                    document.getElementById('connection-status').textContent = 'Controller connected!';
+                    document.getElementById('connection-status').classList.add('connected');
+
+                    conn.on('data', (data) => {
+                        if (this.onCommand) {
+                            this.onCommand(data);
+                        }
+                    });
+
+                    conn.on('close', () => {
+                        console.log('Controller disconnected');
+                        document.getElementById('connection-status').textContent = 'Controller disconnected';
+                        document.getElementById('connection-status').classList.remove('connected');
+                    });
+                });
+            }
+
+            sendData(data) {
+                if (this.conn && this.conn.open) {
+                    this.conn.send(data);
+                }
+            }
         }
-    }
+
+        // Tetris Game Logic
+        class TetrisGame {
+            constructor() {
+                this.width = 10;
+                this.height = 20;
+                this.board = this.createEmptyBoard();
+                this.score = 0;
+                this.currentPiece = null;
+                this.gameOver = false;
+                this.dropInterval = 1000;
+                this.lastDropTime = 0;
+
+                this.colors = [
+                    [0, 0, 0],       // empty
+                    [0, 1, 1],       // I - cyan
+                    [0, 0, 1],       // J - blue
+                    [1, 0.5, 0],     // L - orange
+                    [1, 1, 0],       // O - yellow
+                    [0, 1, 0],       // S - green
+                    [0.5, 0, 1],     // T - purple
+                    [1, 0, 0]        // Z - red
+                ];
+
+                this.pieces = {
+                    'I': [[1,1,1,1]],
+                    'O': [[1,1],[1,1]],
+                    'T': [[0,1,0],[1,1,1]],
+                    'S': [[0,1,1],[1,1,0]],
+                    'Z': [[1,1,0],[0,1,1]],
+                    'J': [[1,0,0],[1,1,1]],
+                    'L': [[0,0,1],[1,1,1]]
+                };
+
+                this.pieceTypes = Object.keys(this.pieces);
+            }
+
+            createEmptyBoard() {
+                return Array(this.height).fill(null).map(() => Array(this.width).fill(0));
+            }
+
+            spawnPiece() {
+                const type = this.pieceTypes[Math.floor(Math.random() * this.pieceTypes.length)];
+                const typeIndex = this.pieceTypes.indexOf(type) + 1;
+                this.currentPiece = {
+                    shape: this.pieces[type],
+                    x: Math.floor(this.width / 2) - 1,
+                    y: 0,
+                    color: typeIndex
+                };
+
+                if (this.checkCollision(this.currentPiece.x, this.currentPiece.y, this.currentPiece.shape)) {
+                    this.gameOver = true;
+                }
+            }
+
+            checkCollision(x, y, shape) {
+                for (let row = 0; row < shape.length; row++) {
+                    for (let col = 0; col < shape[row].length; col++) {
+                        if (shape[row][col]) {
+                            const newX = x + col;
+                            const newY = y + row;
+                            if (newX < 0 || newX >= this.width || newY >= this.height) {
+                                return true;
+                            }
+                            if (newY >= 0 && this.board[newY][newX]) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            }
+
+            rotate() {
+                if (!this.currentPiece) return;
+                const rotated = this.currentPiece.shape[0].map((_, i) =>
+                    this.currentPiece.shape.map(row => row[i]).reverse()
+                );
+                if (!this.checkCollision(this.currentPiece.x, this.currentPiece.y, rotated)) {
+                    this.currentPiece.shape = rotated;
+                }
+            }
+
+            moveLeft() {
+                if (!this.currentPiece) return;
+                if (!this.checkCollision(this.currentPiece.x - 1, this.currentPiece.y, this.currentPiece.shape)) {
+                    this.currentPiece.x--;
+                }
+            }
+
+            moveRight() {
+                if (!this.currentPiece) return;
+                if (!this.checkCollision(this.currentPiece.x + 1, this.currentPiece.y, this.currentPiece.shape)) {
+                    this.currentPiece.x++;
+                }
+            }
+
+            moveDown() {
+                if (!this.currentPiece) return;
+                if (!this.checkCollision(this.currentPiece.x, this.currentPiece.y + 1, this.currentPiece.shape)) {
+                    this.currentPiece.y++;
+                    return true;
+                }
+                return false;
+            }
+
+            hardDrop() {
+                if (!this.currentPiece) return;
+                while (this.moveDown()) {}
+                this.lockPiece();
+            }
+
+            lockPiece() {
+                if (!this.currentPiece) return;
+                const {x, y, shape, color} = this.currentPiece;
+                for (let row = 0; row < shape.length; row++) {
+                    for (let col = 0; col < shape[row].length; col++) {
+                        if (shape[row][col] && y + row >= 0) {
+                            this.board[y + row][x + col] = color;
+                        }
+                    }
+                }
+                this.currentPiece = null;
+                this.clearLines();
+                this.spawnPiece();
+            }
+
+            clearLines() {
+                let linesCleared = 0;
+                for (let row = this.height - 1; row >= 0; row--) {
+                    if (this.board[row].every(cell => cell !== 0)) {
+                        this.board.splice(row, 1);
+                        this.board.unshift(Array(this.width).fill(0));
+                        linesCleared++;
+                        row++;
+                    }
+                }
+                if (linesCleared > 0) {
+                    this.score += linesCleared * 100;
+                    document.getElementById('score-value').textContent = this.score;
+                }
+            }
+
+            update(deltaTime) {
+                if (this.gameOver) return;
+
+                if (!this.currentPiece) {
+                    this.spawnPiece();
+                }
+
+                this.lastDropTime += deltaTime;
+                if (this.lastDropTime >= this.dropInterval) {
+                    this.lastDropTime = 0;
+                    if (!this.moveDown()) {
+                        this.lockPiece();
+                    }
+                }
+            }
+
+            handleCommand(command) {
+                if (this.gameOver) return;
+
+                switch(command) {
+                    case 'left':
+                        this.moveLeft();
+                        break;
+                    case 'right':
+                        this.moveRight();
+                        break;
+                    case 'down':
+                        this.moveDown();
+                        break;
+                    case 'rotate':
+                        this.rotate();
+                        break;
+                    case 'drop':
+                        this.hardDrop();
+                        break;
+                }
+            }
+        }
+
+        // WebXR Renderer
+        class WebXRTetrisRenderer {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.gl = canvas.getContext('webgl2', {
+                    xrCompatible: true,
+                    alpha: false
+                });
+                this.xrSession = null;
+                this.xrRefSpace = null;
+                this.game = new TetrisGame();
+                this.connection = new ControllerConnection();
+
+                this.connection.onCommand = (data) => {
+                    if (data.command) {
+                        this.game.handleCommand(data.command);
+                    }
+                };
+
+                this.lastTime = 0;
+                this.setupGL();
+            }
+
+            setupGL() {
+                const gl = this.gl;
+
+                // Vertex shader
+                const vsSource = `#version 300 es
+                    in vec4 aPosition;
+                    in vec3 aColor;
+                    uniform mat4 uProjectionMatrix;
+                    uniform mat4 uViewMatrix;
+                    uniform mat4 uModelMatrix;
+                    out vec3 vColor;
+
+                    void main() {
+                        gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * aPosition;
+                        vColor = aColor;
+                    }
+                `;
+
+                // Fragment shader
+                const fsSource = `#version 300 es
+                    precision highp float;
+                    in vec3 vColor;
+                    out vec4 fragColor;
+
+                    void main() {
+                        fragColor = vec4(vColor, 1.0);
+                    }
+                `;
+
+                const vertexShader = this.createShader(gl, gl.VERTEX_SHADER, vsSource);
+                const fragmentShader = this.createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+                this.program = gl.createProgram();
+                gl.attachShader(this.program, vertexShader);
+                gl.attachShader(this.program, fragmentShader);
+                gl.linkProgram(this.program);
+
+                if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) {
+                    console.error('Program link failed:', gl.getProgramInfoLog(this.program));
+                }
+
+                this.locations = {
+                    position: gl.getAttribLocation(this.program, 'aPosition'),
+                    color: gl.getAttribLocation(this.program, 'aColor'),
+                    projection: gl.getUniformLocation(this.program, 'uProjectionMatrix'),
+                    view: gl.getUniformLocation(this.program, 'uViewMatrix'),
+                    model: gl.getUniformLocation(this.program, 'uModelMatrix')
+                };
+
+                this.createCubeBuffers();
+            }
+
+            createShader(gl, type, source) {
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    console.error('Shader compile failed:', gl.getShaderInfoLog(shader));
+                    gl.deleteShader(shader);
+                    return null;
+                }
+                return shader;
+            }
+
+            createCubeBuffers() {
+                const gl = this.gl;
+
+                // Cube vertices
+                const vertices = new Float32Array([
+                    -0.5,-0.5,-0.5,  0.5,-0.5,-0.5,  0.5, 0.5,-0.5, -0.5, 0.5,-0.5,
+                    -0.5,-0.5, 0.5,  0.5,-0.5, 0.5,  0.5, 0.5, 0.5, -0.5, 0.5, 0.5,
+                ]);
+
+                const indices = new Uint16Array([
+                    0,1,2, 0,2,3,  4,5,6, 4,6,7,  0,1,5, 0,5,4,
+                    2,3,7, 2,7,6,  0,3,7, 0,7,4,  1,2,6, 1,6,5
+                ]);
+
+                this.vertexBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+                this.indexBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+                gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+                this.indexCount = indices.length;
+            }
+
+            async startXR() {
+                if (!navigator.xr) {
+                    alert('WebXR not supported in this browser');
+                    return;
+                }
+
+                try {
+                    const session = await navigator.xr.requestSession('immersive-ar', {
+                        requiredFeatures: ['local-floor']
+                    });
+
+                    this.xrSession = session;
+                    session.updateRenderState({
+                        baseLayer: new XRWebGLLayer(session, this.gl)
+                    });
+
+                    this.xrRefSpace = await session.requestReferenceSpace('local-floor');
+                    session.requestAnimationFrame((time, frame) => this.onXRFrame(time, frame));
+
+                    session.addEventListener('end', () => {
+                        this.xrSession = null;
+                    });
+                } catch (err) {
+                    console.error('Failed to start XR session:', err);
+                    alert('Failed to start AR session. Make sure you are using a compatible device.');
+                }
+            }
+
+            onXRFrame(time, frame) {
+                const session = frame.session;
+                session.requestAnimationFrame((time, frame) => this.onXRFrame(time, frame));
+
+                const deltaTime = this.lastTime ? time - this.lastTime : 0;
+                this.lastTime = time;
+
+                this.game.update(deltaTime);
+
+                const gl = this.gl;
+                const pose = frame.getViewerPose(this.xrRefSpace);
+
+                if (pose) {
+                    const layer = session.renderState.baseLayer;
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
+
+                    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+                    gl.enable(gl.DEPTH_TEST);
+
+                    for (const view of pose.views) {
+                        const viewport = layer.getViewport(view);
+                        gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
+
+                        this.renderGame(view.projectionMatrix, view.transform.inverse.matrix);
+                    }
+                }
+            }
+
+            renderGame(projectionMatrix, viewMatrix) {
+                const gl = this.gl;
+                gl.useProgram(this.program);
+
+                gl.uniformMatrix4fv(this.locations.projection, false, projectionMatrix);
+                gl.uniformMatrix4fv(this.locations.view, false, viewMatrix);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+                gl.enableVertexAttribArray(this.locations.position);
+                gl.vertexAttribPointer(this.locations.position, 3, gl.FLOAT, false, 0, 0);
+
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+
+                const blockSize = 0.05;
+                const boardOffsetX = -0.25;
+                const boardOffsetY = 0.0;
+                const boardOffsetZ = -1.0;
+
+                // Draw board blocks
+                for (let row = 0; row < this.game.height; row++) {
+                    for (let col = 0; col < this.game.width; col++) {
+                        const colorIndex = this.game.board[row][col];
+                        if (colorIndex > 0) {
+                            this.drawBlock(col, row, this.game.colors[colorIndex],
+                                boardOffsetX, boardOffsetY, boardOffsetZ, blockSize);
+                        }
+                    }
+                }
+
+                // Draw current piece
+                if (this.game.currentPiece) {
+                    const piece = this.game.currentPiece;
+                    const color = this.game.colors[piece.color];
+                    for (let row = 0; row < piece.shape.length; row++) {
+                        for (let col = 0; col < piece.shape[row].length; col++) {
+                            if (piece.shape[row][col]) {
+                                this.drawBlock(piece.x + col, piece.y + row, color,
+                                    boardOffsetX, boardOffsetY, boardOffsetZ, blockSize);
+                            }
+                        }
+                    }
+                }
+
+                // Draw board outline
+                this.drawBoardOutline(boardOffsetX, boardOffsetY, boardOffsetZ, blockSize);
+            }
+
+            drawBlock(x, y, color, offsetX, offsetY, offsetZ, size) {
+                const gl = this.gl;
+                const modelMatrix = new Float32Array(16);
+                this.mat4Identity(modelMatrix);
+                this.mat4Translate(modelMatrix,
+                    offsetX + x * size,
+                    offsetY - y * size,
+                    offsetZ
+                );
+                this.mat4Scale(modelMatrix, size * 0.9, size * 0.9, size * 0.9);
+
+                gl.uniformMatrix4fv(this.locations.model, false, modelMatrix);
+
+                const colorBuffer = gl.createBuffer();
+                const colors = [];
+                for (let i = 0; i < 8; i++) {
+                    colors.push(...color);
+                }
+                gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+                gl.enableVertexAttribArray(this.locations.color);
+                gl.vertexAttribPointer(this.locations.color, 3, gl.FLOAT, false, 0, 0);
+
+                gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0);
+                gl.deleteBuffer(colorBuffer);
+            }
+
+            drawBoardOutline(offsetX, offsetY, offsetZ, blockSize) {
+                const gl = this.gl;
+                const width = this.game.width * blockSize;
+                const height = this.game.height * blockSize;
+
+                // Draw thin outline boxes
+                const outlineColor = [0.5, 0.5, 0.5];
+                const thickness = blockSize * 0.05;
+
+                // Left border
+                this.drawOutlinePiece(offsetX - thickness, offsetY - height/2, offsetZ,
+                    thickness, height, thickness, outlineColor);
+                // Right border
+                this.drawOutlinePiece(offsetX + width, offsetY - height/2, offsetZ,
+                    thickness, height, thickness, outlineColor);
+                // Top border
+                this.drawOutlinePiece(offsetX + width/2, offsetY, offsetZ,
+                    width, thickness, thickness, outlineColor);
+                // Bottom border
+                this.drawOutlinePiece(offsetX + width/2, offsetY - height, offsetZ,
+                    width, thickness, thickness, outlineColor);
+            }
+
+            drawOutlinePiece(x, y, z, w, h, d, color) {
+                const gl = this.gl;
+                const modelMatrix = new Float32Array(16);
+                this.mat4Identity(modelMatrix);
+                this.mat4Translate(modelMatrix, x, y, z);
+                this.mat4Scale(modelMatrix, w, h, d);
+
+                gl.uniformMatrix4fv(this.locations.model, false, modelMatrix);
+
+                const colorBuffer = gl.createBuffer();
+                const colors = [];
+                for (let i = 0; i < 8; i++) {
+                    colors.push(...color);
+                }
+                gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+                gl.enableVertexAttribArray(this.locations.color);
+                gl.vertexAttribPointer(this.locations.color, 3, gl.FLOAT, false, 0, 0);
+
+                gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_SHORT, 0);
+                gl.deleteBuffer(colorBuffer);
+            }
+
+            mat4Identity(out) {
+                out[0] = 1; out[1] = 0; out[2] = 0; out[3] = 0;
+                out[4] = 0; out[5] = 1; out[6] = 0; out[7] = 0;
+                out[8] = 0; out[9] = 0; out[10] = 1; out[11] = 0;
+                out[12] = 0; out[13] = 0; out[14] = 0; out[15] = 1;
+            }
+
+            mat4Translate(mat, x, y, z) {
+                mat[12] += x;
+                mat[13] += y;
+                mat[14] += z;
+            }
+
+            mat4Scale(mat, x, y, z) {
+                mat[0] *= x; mat[1] *= x; mat[2] *= x; mat[3] *= x;
+                mat[4] *= y; mat[5] *= y; mat[6] *= y; mat[7] *= y;
+                mat[8] *= z; mat[9] *= z; mat[10] *= z; mat[11] *= z;
+            }
+        }
+
+        // Initialize
+        const canvas = document.getElementById('canvas');
+        const renderer = new WebXRTetrisRenderer(canvas);
+
+        document.getElementById('startButton').addEventListener('click', () => {
+            renderer.startXR();
+        });
     </script>
-    <script type="module" src="vr-tetris.js"></script>
 </body>
 </html>
-
