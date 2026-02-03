@@ -82,6 +82,10 @@ class VRTetris {
         
         this.updateStatus('Connecting...', `Code: ${this.connectionId}`);
         
+        if (this.peerSignaling) {
+            this.peerSignaling.close();
+            this.peerSignaling = null;
+        }
         await this.setupConnection();
     }
     
@@ -247,6 +251,12 @@ class VRTetris {
         } else if (message.type === 'disconnected') {
             this.isConnected = false;
             this.updateStatus('Disconnected', 'Waiting for connection...');
+        } else if (message.type === 'peerError') {
+            this.isConnected = false;
+            const panel = document.getElementById('connectPanel');
+            if (panel) { panel.style.display = 'block'; panel.querySelector('input')?.focus(); }
+            const details = message.details ? ` (${message.details})` : '';
+            this.updateStatus('Connection Error', `${message.error}${details}`);
         } else if (message.type === 'command') {
             this.handleCommand(message.command);
         } else if (message.type === 'gameState') {
