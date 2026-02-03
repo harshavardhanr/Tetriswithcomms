@@ -205,8 +205,8 @@ class VRTetris {
             const button = document.createElement('button');
             button.id = 'enterVRBtn';
             button.textContent = arSupported ? 'Enter VR (Passthrough)' : 'Enter VR';
-            button.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);padding:20px;font-size:24px;z-index:1000;display:none;';
-            button.onclick = () => this.enterVR();
+            button.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);padding:20px;font-size:24px;z-index:1000;display:none;cursor:pointer;';
+            button.onclick = () => { this.enterVR(); };
             document.body.appendChild(button);
         } else {
             this.updateStatus('WebXR not supported', 'Please use a Quest headset');
@@ -214,20 +214,27 @@ class VRTetris {
     }
     
     async enterVR() {
+        const button = document.getElementById('enterVRBtn');
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Starting…';
+        }
+        const mode = this.xrMode || 'immersive-ar';
         try {
-            const mode = this.xrMode || 'immersive-ar';
-            const opts = mode === 'immersive-ar' ? {} : { requiredFeatures: ['local-floor'] };
+            const opts = mode === 'immersive-ar'
+                ? { optionalFeatures: ['local-floor'] }
+                : { requiredFeatures: ['local-floor'] };
             this.xrSession = await navigator.xr.requestSession(mode, opts);
-            
-            this.renderer.xr.setSession(this.xrSession);
-            
-            const button = document.getElementById('enterVRBtn');
+            await this.renderer.xr.setSession(this.xrSession);
             if (button) button.remove();
-            
             this.updateStatus('VR Active', mode === 'immersive-ar' ? 'Passthrough' : 'VR');
         } catch (error) {
             console.error('Error entering VR:', error);
-            this.updateStatus('VR Error', error.message);
+            this.updateStatus('VR Error', error.message || String(error));
+            if (button) {
+                button.disabled = false;
+                button.textContent = (mode === 'immersive-ar' ? 'Enter VR (Passthrough)' : 'Enter VR');
+            }
         }
     }
     
