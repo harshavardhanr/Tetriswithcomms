@@ -93,11 +93,13 @@ class VRTetris {
         if (!this.connectionId) return;
         
         try {
+            this.updateStatus('Connecting…', `Code: ${this.connectionId}`);
             this.peerSignaling = new PeerJSSignaling(this.connectionId, false);
             this.signaling = new WebRTCSignaling((message) => this.handleMessage(message));
             await this.peerSignaling.initialize((message) => this.handleMessage(message));
-            
-            this.updateStatus('Connected', `Code: ${this.connectionId} - Click Enter VR`);
+            if (!this.isConnected) {
+                this.updateStatus('Connecting to phone…', `Code: ${this.connectionId} - Click Enter VR when ready`);
+            }
         } catch (error) {
             console.error('Connection setup error:', error);
             const panel = document.getElementById('connectPanel');
