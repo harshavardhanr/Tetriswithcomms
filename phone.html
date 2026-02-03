@@ -89,6 +89,12 @@
             background: rgba(255,100,100,0.9);
             color: white;
         }
+        .btn-connect {
+            background: rgba(0,200,100,0.9);
+            color: white;
+            padding: 15px 25px;
+            font-size: 18px;
+        }
         .qr-section {
             background: rgba(255,255,255,0.2);
             padding: 20px;
@@ -120,10 +126,11 @@
         </div>
         
         <div class="qr-section" id="qrSection">
-            <div>Connection ID:</div>
-            <div id="connectionId" style="font-size: 24px; font-weight: bold; margin: 10px 0;">Generating...</div>
-            <div id="qrCode"></div>
-            <div class="instructions">Scan QR code with Quest headset or enter ID manually</div>
+            <div>Connection code (type same code on both devices):</div>
+            <input type="text" id="connectionCode" maxlength="8" placeholder="e.g. ABC123" 
+                   style="font-size: 24px; padding: 12px; margin: 10px 0; text-align: center; width: 180px; text-transform: uppercase; letter-spacing: 4px;">
+            <button class="btn btn-connect" id="btnConnect" style="margin-top: 10px;">Start & wait for VR</button>
+            <div class="instructions">Type this code in the VR headset to connect</div>
         </div>
         
         <div class="controls">
