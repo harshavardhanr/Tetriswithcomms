@@ -12,58 +12,39 @@ class PhoneController {
     }
     
     async init() {
-        // Get or generate connection ID
-        const urlParams = new URLSearchParams(window.location.search);
-        this.connectionId = urlParams.get('id') || this.generateConnectionId();
-        
-        // Setup signaling using PeerJS
-        this.peerSignaling = new PeerJSSignaling(this.connectionId, this.isHost);
-        this.signaling = new WebRTCSignaling((message) => this.handleMessage(message));
-        
-        // Display connection ID and QR code
-        this.displayConnectionInfo();
-        
-        // Setup controls
+        // Setup controls first
         this.setupControls();
         
-        // Start connection process
-        await this.startConnection();
+        // Pre-fill code from URL if present
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlId = urlParams.get('id');
+        const codeInput = document.getElementById('connectionCode');
+        if (urlId) {
+            codeInput.value = urlId.toUpperCase().substring(0, 8);
+        } else {
+            codeInput.value = this.generateConnectionId();
+        }
+        codeInput.placeholder = 'e.g. ABC123';
+        
+        this.updateStatus('Ready', 'Enter code & click Start');
     }
     
     generateConnectionId() {
         return Math.random().toString(36).substring(2, 8).toUpperCase();
     }
     
-    displayConnectionInfo() {
-        const connectionIdElement = document.getElementById('connectionId');
-        connectionIdElement.textContent = this.connectionId;
-        
-        // Generate QR code
-        this.generateQRCode();
-        
-        // Update URL with connection ID
-        if (!window.location.search.includes('id=')) {
-            const newUrl = `${window.location.pathname}?id=${this.connectionId}`;
-            window.history.replaceState({}, '', newUrl);
-        }
-    }
-    
-    generateQRCode() {
-        // Simple QR code generation using a library or API
-        // For simplicity, we'll use a QR code API service
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`;
-        const qrImg = document.createElement('img');
-        qrImg.src = qrUrl;
-        qrImg.alt = 'QR Code';
-        qrImg.style.maxWidth = '200px';
-        qrImg.style.width = '100%';
-        
-        const qrContainer = document.getElementById('qrCode');
-        qrContainer.innerHTML = '';
-        qrContainer.appendChild(qrImg);
-    }
-    
     async startConnection() {
+        this.connectionId = document.getElementById('connectionCode').value.trim().toUpperCase();
+        if (!this.connectionId || this.connectionId.length < 4) {
+            this.updateStatus('Error', 'Enter at least 4 characters');
+            return;
+        }
+        
+        const btn = document.getElementById('btnConnect');
+        if (btn) { btn.disabled = true; btn.textContent = 'Waiting...'; }
+        
+        this.peerSignaling = new PeerJSSignaling(this.connectionId, this.isHost);
+        this.signaling = new WebRTCSignaling((message) => this.handleMessage(message));
         try {
             // Initialize PeerJS signaling
             await this.peerSignaling.initialize((message) => {
@@ -78,6 +59,12 @@ class PhoneController {
     }
     
     setupControls() {
+        document.getElementById('btnConnect').addEventListener('click', () => this.startConnection());
+        
+        document.getElementById('connectionCode').addEventListener('input', (e) => {
+            e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        });
+        
         document.getElementById('left').addEventListener('touchstart', (e) => {
             e.preventDefault();
             this.sendCommand('left');
