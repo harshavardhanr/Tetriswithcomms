@@ -88,18 +88,32 @@
                 this.peer = new Peer(this.peerId);
 
                 this.peer.on('open', (id) => {
-                    console.log('Peer ID:', id);
+                    console.log('VR Peer ID:', id);
                     document.getElementById('peer-id-value').textContent = id;
+                    console.log('Waiting for controller connection...');
+                });
+
+                this.peer.on('error', (err) => {
+                    console.error('VR Peer error:', err);
+                    document.getElementById('connection-status').textContent = 'Error: ' + err.type;
                 });
 
                 this.peer.on('connection', (conn) => {
+                    console.log('Incoming connection from:', conn.peer);
                     this.conn = conn;
-                    console.log('Controller connected!');
-                    document.getElementById('connection-status').textContent = 'Controller connected!';
-                    document.getElementById('connection-status').classList.add('connected');
+
+                    conn.on('open', () => {
+                        console.log('✓ Controller connection established!');
+                        document.getElementById('connection-status').textContent = '✓ Controller connected!';
+                        document.getElementById('connection-status').classList.add('connected');
+
+                        // Send confirmation back to phone
+                        conn.send({ status: 'connected', message: 'VR headset ready' });
+                    });
 
                     conn.on('data', (data) => {
-                        if (this.onCommand) {
+                        console.log('Received from controller:', data);
+                        if (this.onCommand && data.command) {
                             this.onCommand(data);
                         }
                     });
@@ -107,6 +121,13 @@
                     conn.on('close', () => {
                         console.log('Controller disconnected');
                         document.getElementById('connection-status').textContent = 'Controller disconnected';
+                        document.getElementById('connection-status').classList.remove('connected');
+                        this.conn = null;
+                    });
+
+                    conn.on('error', (err) => {
+                        console.error('Connection error:', err);
+                        document.getElementById('connection-status').textContent = 'Connection error';
                         document.getElementById('connection-status').classList.remove('connected');
                     });
                 });

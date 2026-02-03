@@ -287,51 +287,92 @@
                     return;
                 }
 
+                // Disable button during connection
+                document.getElementById('connect-btn').disabled = true;
+                this.updateConnectionStatus('Initializing...', false);
+
                 try {
-                    // Create peer with random ID
-                    this.peer = new Peer('phone-' + Math.random().toString(36).substr(2, 9));
+                    // Create peer with random ID if not already created
+                    if (!this.peer) {
+                        this.peer = new Peer('phone-' + Math.random().toString(36).substr(2, 9));
 
-                    this.peer.on('open', (id) => {
-                        console.log('Phone Peer ID:', id);
+                        this.peer.on('open', (id) => {
+                            console.log('Phone Peer ID:', id);
+                            this.updateConnectionStatus('Phone ready, connecting to VR...', false);
+                            this.connectToPeer(peerId);
+                        });
+
+                        this.peer.on('error', (err) => {
+                            console.error('Peer error:', err);
+                            this.updateConnectionStatus('Error: ' + err.type, false);
+                            document.getElementById('connect-btn').disabled = false;
+                            alert('Connection error: ' + err.message);
+                        });
+
+                        this.peer.on('disconnected', () => {
+                            console.log('Peer disconnected, attempting to reconnect...');
+                            this.peer.reconnect();
+                        });
+                    } else {
+                        // Peer already exists, just connect
                         this.connectToPeer(peerId);
-                    });
-
-                    this.peer.on('error', (err) => {
-                        console.error('Peer error:', err);
-                        this.updateConnectionStatus('Connection Error', false);
-                    });
+                    }
 
                 } catch (err) {
                     console.error('Failed to create peer:', err);
-                    alert('Failed to initialize connection');
+                    this.updateConnectionStatus('Failed to initialize', false);
+                    document.getElementById('connect-btn').disabled = false;
+                    alert('Failed to initialize connection: ' + err.message);
                 }
             }
 
             connectToPeer(peerId) {
-                this.updateConnectionStatus('Connecting...', false);
+                console.log('Attempting to connect to peer:', peerId);
+                this.updateConnectionStatus('Connecting to ' + peerId + '...', false);
 
-                this.conn = this.peer.connect(peerId, {
-                    reliable: true
-                });
+                try {
+                    this.conn = this.peer.connect(peerId, {
+                        reliable: true,
+                        serialization: 'json'
+                    });
 
-                this.conn.on('open', () => {
-                    console.log('Connected to VR headset!');
-                    this.connected = true;
-                    this.updateConnectionStatus('Connected to VR Headset', true);
-                    document.getElementById('controls').classList.add('active');
-                });
+                    console.log('Connection object created');
 
-                this.conn.on('close', () => {
-                    console.log('Connection closed');
-                    this.connected = false;
-                    this.updateConnectionStatus('Disconnected', false);
-                    document.getElementById('controls').classList.remove('active');
-                });
+                    this.conn.on('open', () => {
+                        console.log('✓ Connected to VR headset!');
+                        this.connected = true;
+                        this.updateConnectionStatus('✓ Connected to VR Headset', true);
+                        document.getElementById('controls').classList.add('active');
+                        document.getElementById('connect-btn').disabled = false;
 
-                this.conn.on('error', (err) => {
-                    console.error('Connection error:', err);
-                    this.updateConnectionStatus('Connection Failed', false);
-                });
+                        // Send test message
+                        this.conn.send({ command: 'test', message: 'Phone connected' });
+                    });
+
+                    this.conn.on('close', () => {
+                        console.log('Connection closed');
+                        this.connected = false;
+                        this.updateConnectionStatus('Disconnected', false);
+                        document.getElementById('controls').classList.remove('active');
+                        document.getElementById('connect-btn').disabled = false;
+                    });
+
+                    this.conn.on('error', (err) => {
+                        console.error('Connection error:', err);
+                        this.updateConnectionStatus('Connection Failed: ' + err, false);
+                        document.getElementById('connect-btn').disabled = false;
+                        alert('Failed to connect: ' + err);
+                    });
+
+                    this.conn.on('data', (data) => {
+                        console.log('Received data from VR:', data);
+                    });
+
+                } catch (err) {
+                    console.error('Error creating connection:', err);
+                    this.updateConnectionStatus('Error: ' + err.message, false);
+                    document.getElementById('connect-btn').disabled = false;
+                }
             }
 
             updateConnectionStatus(message, connected) {
