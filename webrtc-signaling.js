@@ -288,9 +288,16 @@ export class PeerJSSignaling {
     }
     
     sendSignal(signal) {
-        if (this.connection && this.connection.open) {
-            this.connection.send(signal);
-            return true;
+        if (!this.connection) return false;
+        const isOpen = this.connection.open === true;
+        if (isOpen) {
+            try {
+                this.connection.send(signal);
+                return true;
+            } catch (e) {
+                console.error('PeerJS send failed:', e);
+                return false;
+            }
         }
         return false;
     }
