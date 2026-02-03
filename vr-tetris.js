@@ -28,29 +28,61 @@ class VRTetris {
         // Load Three.js
         THREE = await import('three');
         
-        // Get connection ID from URL or generate one
-        const urlParams = new URLSearchParams(window.location.search);
-        this.connectionId = urlParams.get('id') || this.generateConnectionId();
-        
-        // Setup signaling using PeerJS (no local server needed)
-        this.peerSignaling = new PeerJSSignaling(this.connectionId, false);
-        this.signaling = new WebRTCSignaling((message) => this.handleMessage(message));
-        
-        // Setup connection
-        await this.setupConnection();
-        
-        // Setup Three.js scene
+        // Setup Three.js scene (before connect)
         this.setupScene();
         
-        // Setup WebXR
+        // Setup WebXR (shows Enter VR after connect)
         await this.setupWebXR();
         
         // Start game loop
         this.game = new TetrisGame();
         this.animate();
         
-        // Update connection status
-        this.updateStatus('Waiting for phone connection...', 'Scan QR code on phone');
+        // Show connect panel - user must enter code and click Connect
+        this.setupConnectUI();
+    }
+    
+    setupConnectUI() {
+        const panel = document.getElementById('connectPanel');
+        const codeInput = document.getElementById('connectionCode');
+        const btnConnect = document.getElementById('btnConnect');
+        
+        if (!panel || !codeInput || !btnConnect) return;
+        
+        codeInput.addEventListener('input', (e) => {
+            e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        });
+        
+        codeInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') btnConnect.click();
+        });
+        
+        btnConnect.onclick = () => this.connectWithCode();
+        
+        // Pre-fill from URL if present
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlId = urlParams.get('id');
+        if (urlId) codeInput.value = urlId.toUpperCase().substring(0, 8);
+    }
+    
+    async connectWithCode() {
+        const codeInput = document.getElementById('connectionCode');
+        this.connectionId = codeInput?.value?.trim().toUpperCase();
+        
+        if (!this.connectionId || this.connectionId.length < 4) {
+            this.updateStatus('Error', 'Enter at least 4 characters');
+            return;
+        }
+        
+        const panel = document.getElementById('connectPanel');
+        if (panel) panel.style.display = 'none';
+        
+        const enterBtn = document.getElementById('enterVRBtn');
+        if (enterBtn) enterBtn.style.display = 'block';
+        
+        this.updateStatus('Connecting...', `Code: ${this.connectionId}`);
+        
+        await this.setupConnection();
     }
     
     generateConnectionId() {
@@ -58,33 +90,34 @@ class VRTetris {
     }
     
     async setupConnection() {
+        if (!this.connectionId) return;
+        
         try {
-            // Initialize PeerJS signaling
-            await this.peerSignaling.initialize((message) => {
-                this.handleMessage(message);
-            });
+            this.peerSignaling = new PeerJSSignaling(this.connectionId, false);
+            this.signaling = new WebRTCSignaling((message) => this.handleMessage(message));
+            await this.peerSignaling.initialize((message) => this.handleMessage(message));
             
-            // Display connection ID
-            document.getElementById('connectionStatus').textContent = 
-                `Connection ID: ${this.connectionId}`;
+            this.updateStatus('Connected', `Code: ${this.connectionId} - Click Enter VR`);
         } catch (error) {
             console.error('Connection setup error:', error);
-            document.getElementById('connectionStatus').textContent = 
-                `Connection Error: ${error.message}`;
+            const panel = document.getElementById('connectPanel');
+            if (panel) { panel.style.display = 'block'; panel.querySelector('input')?.focus(); }
+            this.updateStatus('Connection failed', error.message || 'Check code matches phone');
         }
     }
     
     setupScene() {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x000000);
+        this.scene.background = null; // Transparent for passthrough
         
         // Camera will be set by WebXR
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         
-        // Renderer
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        // Renderer - alpha: true for passthrough/AR
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.xr.enabled = true;
+        this.renderer.setClearColor(0x000000, 0); // Transparent clear
         document.body.appendChild(this.renderer.domElement);
         
         // Lighting
@@ -159,35 +192,39 @@ class VRTetris {
     }
     
     async setupWebXR() {
-        if (navigator.xr) {
-            const supported = await navigator.xr.isSessionSupported('immersive-vr');
-            if (supported) {
-                const button = document.createElement('button');
-                button.textContent = 'Enter VR';
-                button.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);padding:20px;font-size:24px;z-index:1000;';
-                button.onclick = () => this.enterVR();
-                document.body.appendChild(button);
-            } else {
-                this.updateStatus('WebXR not supported', 'Please use a Quest headset');
-            }
-        } else {
+        if (!navigator.xr) {
             this.updateStatus('WebXR not available', 'Please use a Quest headset');
+            return;
+        }
+        const arSupported = await navigator.xr.isSessionSupported('immersive-ar');
+        const vrSupported = await navigator.xr.isSessionSupported('immersive-vr');
+        const mode = arSupported ? 'immersive-ar' : (vrSupported ? 'immersive-vr' : null);
+        
+        if (mode) {
+            this.xrMode = mode;
+            const button = document.createElement('button');
+            button.id = 'enterVRBtn';
+            button.textContent = arSupported ? 'Enter VR (Passthrough)' : 'Enter VR';
+            button.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);padding:20px;font-size:24px;z-index:1000;display:none;';
+            button.onclick = () => this.enterVR();
+            document.body.appendChild(button);
+        } else {
+            this.updateStatus('WebXR not supported', 'Please use a Quest headset');
         }
     }
     
     async enterVR() {
         try {
-            this.xrSession = await navigator.xr.requestSession('immersive-vr', {
-                requiredFeatures: ['local-floor']
-            });
+            const mode = this.xrMode || 'immersive-ar';
+            const opts = mode === 'immersive-ar' ? {} : { requiredFeatures: ['local-floor'] };
+            this.xrSession = await navigator.xr.requestSession(mode, opts);
             
             this.renderer.xr.setSession(this.xrSession);
             
-            // Remove button
-            const button = document.querySelector('button');
+            const button = document.getElementById('enterVRBtn');
             if (button) button.remove();
             
-            this.updateStatus('VR Active', 'Connected');
+            this.updateStatus('VR Active', mode === 'immersive-ar' ? 'Passthrough' : 'VR');
         } catch (error) {
             console.error('Error entering VR:', error);
             this.updateStatus('VR Error', error.message);
