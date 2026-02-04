@@ -54,9 +54,14 @@
 <body>
     <div id="info">
         <h2>WebXR Tetris</h2>
-        <button id="startButton">Start AR Session</button>
-        <div id="connection-status">Waiting for controller...</div>
-        <div id="peer-id">Peer ID: <span id="peer-id-value">Generating...</span></div>
+        <div id="room-setup" style="margin-bottom: 15px;">
+            <input type="text" id="room-code" placeholder="Enter room code (e.g., 1234)"
+                   style="padding: 10px; font-size: 18px; width: 200px; border-radius: 5px; border: 2px solid #fff;">
+            <button id="joinButton" style="margin-left: 10px;">Join Room</button>
+        </div>
+        <button id="startButton" style="display: none;">Start AR Session</button>
+        <div id="connection-status">Enter a room code to start</div>
+        <div id="room-info" style="margin-top: 10px; display: none;">Room: <span id="room-code-display"></span></div>
         <div id="score">Score: <span id="score-value">0</span></div>
     </div>
     <canvas id="canvas"></canvas>
@@ -65,37 +70,54 @@
         // WebRTC Signaling and Connection
         class ControllerConnection {
             constructor() {
-                this.peerId = this.generatePeerId();
+                this.roomCode = null;
                 this.peer = null;
                 this.conn = null;
                 this.onCommand = null;
                 this.setupPeerJS();
             }
 
-            generatePeerId() {
-                return 'vr-' + Math.random().toString(36).substr(2, 9);
-            }
-
             async setupPeerJS() {
                 // Using PeerJS for WebRTC connection
                 const script = document.createElement('script');
                 script.src = 'https://unpkg.com/peerjs@1.5.0/dist/peerjs.min.js';
-                script.onload = () => this.initializePeer();
+                script.onload = () => {
+                    console.log('PeerJS loaded');
+                    document.getElementById('joinButton').disabled = false;
+                };
                 document.head.appendChild(script);
             }
 
-            initializePeer() {
-                this.peer = new Peer(this.peerId);
+            joinRoom(roomCode) {
+                if (!window.Peer) {
+                    alert('PeerJS is still loading, please wait...');
+                    return;
+                }
+
+                this.roomCode = roomCode;
+                const vrPeerId = 'vr-' + roomCode;
+
+                console.log('Joining room as VR headset:', vrPeerId);
+                this.peer = new Peer(vrPeerId);
 
                 this.peer.on('open', (id) => {
                     console.log('VR Peer ID:', id);
-                    document.getElementById('peer-id-value').textContent = id;
-                    console.log('Waiting for controller connection...');
+                    document.getElementById('connection-status').textContent = 'Waiting for controller...';
+                    document.getElementById('room-info').style.display = 'block';
+                    document.getElementById('room-code-display').textContent = roomCode;
+                    document.getElementById('room-setup').style.display = 'none';
+                    document.getElementById('startButton').style.display = 'block';
+                    console.log('Room ready. Phone should join room:', roomCode);
                 });
 
                 this.peer.on('error', (err) => {
                     console.error('VR Peer error:', err);
-                    document.getElementById('connection-status').textContent = 'Error: ' + err.type;
+                    if (err.type === 'unavailable-id') {
+                        alert('Room code already in use. Please try a different code.');
+                        this.reset();
+                    } else {
+                        document.getElementById('connection-status').textContent = 'Error: ' + err.type;
+                    }
                 });
 
                 this.peer.on('connection', (conn) => {
@@ -131,6 +153,15 @@
                         document.getElementById('connection-status').classList.remove('connected');
                     });
                 });
+            }
+
+            reset() {
+                if (this.peer) {
+                    this.peer.destroy();
+                }
+                document.getElementById('room-setup').style.display = 'block';
+                document.getElementById('startButton').style.display = 'none';
+                document.getElementById('room-info').style.display = 'none';
             }
 
             sendData(data) {
@@ -633,6 +664,27 @@
         // Initialize
         const canvas = document.getElementById('canvas');
         const renderer = new WebXRTetrisRenderer(canvas);
+
+        document.getElementById('joinButton').disabled = true;
+        document.getElementById('joinButton').addEventListener('click', () => {
+            const roomCode = document.getElementById('room-code').value.trim().toLowerCase();
+            if (!roomCode) {
+                alert('Please enter a room code');
+                return;
+            }
+            if (roomCode.length < 3) {
+                alert('Room code must be at least 3 characters');
+                return;
+            }
+            renderer.connection.joinRoom(roomCode);
+        });
+
+        // Allow Enter key to join room
+        document.getElementById('room-code').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('joinButton').click();
+            }
+        });
 
         document.getElementById('startButton').addEventListener('click', () => {
             renderer.startXR();

@@ -181,10 +181,10 @@
         <div id="connection-section">
             <div id="connection-status">Not Connected</div>
             <div class="input-group">
-                <label for="peer-id-input">Enter VR Headset Peer ID:</label>
-                <input type="text" id="peer-id-input" placeholder="vr-xxxxxxxxx">
+                <label for="room-code-input">Enter Room Code:</label>
+                <input type="text" id="room-code-input" placeholder="e.g., 1234 or game1" autocomplete="off">
             </div>
-            <button id="connect-btn">Connect</button>
+            <button id="connect-btn">Join Room</button>
         </div>
 
         <div id="controls">
@@ -241,13 +241,13 @@
 
             setupUI() {
                 const connectBtn = document.getElementById('connect-btn');
-                const peerIdInput = document.getElementById('peer-id-input');
+                const roomCodeInput = document.getElementById('room-code-input');
 
                 connectBtn.disabled = true;
                 connectBtn.addEventListener('click', () => this.connect());
 
                 // Allow Enter key to connect
-                peerIdInput.addEventListener('keypress', (e) => {
+                roomCodeInput.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') {
                         this.connect();
                     }
@@ -275,10 +275,15 @@
             }
 
             async connect() {
-                const peerId = document.getElementById('peer-id-input').value.trim();
+                const roomCode = document.getElementById('room-code-input').value.trim().toLowerCase();
 
-                if (!peerId) {
-                    alert('Please enter a Peer ID');
+                if (!roomCode) {
+                    alert('Please enter a room code');
+                    return;
+                }
+
+                if (roomCode.length < 3) {
+                    alert('Room code must be at least 3 characters');
                     return;
                 }
 
@@ -289,24 +294,33 @@
 
                 // Disable button during connection
                 document.getElementById('connect-btn').disabled = true;
-                this.updateConnectionStatus('Initializing...', false);
+                this.updateConnectionStatus('Joining room...', false);
+
+                const vrPeerId = 'vr-' + roomCode;
+                const phonePeerId = 'phone-' + roomCode;
 
                 try {
-                    // Create peer with random ID if not already created
+                    // Create peer with room-based ID if not already created
                     if (!this.peer) {
-                        this.peer = new Peer('phone-' + Math.random().toString(36).substr(2, 9));
+                        console.log('Creating phone peer:', phonePeerId);
+                        this.peer = new Peer(phonePeerId);
 
                         this.peer.on('open', (id) => {
                             console.log('Phone Peer ID:', id);
-                            this.updateConnectionStatus('Phone ready, connecting to VR...', false);
-                            this.connectToPeer(peerId);
+                            this.updateConnectionStatus('Connecting to VR in room ' + roomCode + '...', false);
+                            this.connectToPeer(vrPeerId);
                         });
 
                         this.peer.on('error', (err) => {
                             console.error('Peer error:', err);
                             this.updateConnectionStatus('Error: ' + err.type, false);
                             document.getElementById('connect-btn').disabled = false;
-                            alert('Connection error: ' + err.message);
+
+                            if (err.type === 'unavailable-id') {
+                                alert('Already connected to this room. Please refresh the page to reconnect.');
+                            } else {
+                                alert('Connection error: ' + err.message);
+                            }
                         });
 
                         this.peer.on('disconnected', () => {
@@ -315,7 +329,7 @@
                         });
                     } else {
                         // Peer already exists, just connect
-                        this.connectToPeer(peerId);
+                        this.connectToPeer(vrPeerId);
                     }
 
                 } catch (err) {
@@ -326,22 +340,31 @@
                 }
             }
 
-            connectToPeer(peerId) {
-                console.log('Attempting to connect to peer:', peerId);
-                this.updateConnectionStatus('Connecting to ' + peerId + '...', false);
+            connectToPeer(vrPeerId) {
+                console.log('Attempting to connect to VR peer:', vrPeerId);
+                this.updateConnectionStatus('Looking for VR headset...', false);
 
                 try {
-                    this.conn = this.peer.connect(peerId, {
+                    this.conn = this.peer.connect(vrPeerId, {
                         reliable: true,
                         serialization: 'json'
                     });
 
                     console.log('Connection object created');
 
+                    // Set a timeout to detect if VR hasn't joined yet
+                    const connectionTimeout = setTimeout(() => {
+                        if (!this.connected) {
+                            this.updateConnectionStatus('VR headset not found. Is it in the room?', false);
+                            document.getElementById('connect-btn').disabled = false;
+                        }
+                    }, 5000);
+
                     this.conn.on('open', () => {
+                        clearTimeout(connectionTimeout);
                         console.log('✓ Connected to VR headset!');
                         this.connected = true;
-                        this.updateConnectionStatus('✓ Connected to VR Headset', true);
+                        this.updateConnectionStatus('✓ Connected!', true);
                         document.getElementById('controls').classList.add('active');
                         document.getElementById('connect-btn').disabled = false;
 
@@ -358,10 +381,11 @@
                     });
 
                     this.conn.on('error', (err) => {
+                        clearTimeout(connectionTimeout);
                         console.error('Connection error:', err);
-                        this.updateConnectionStatus('Connection Failed: ' + err, false);
+                        this.updateConnectionStatus('VR headset not in room', false);
                         document.getElementById('connect-btn').disabled = false;
-                        alert('Failed to connect: ' + err);
+                        alert('VR headset not found in this room. Make sure the VR device has joined first.');
                     });
 
                     this.conn.on('data', (data) => {
